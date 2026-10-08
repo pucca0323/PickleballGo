@@ -13,7 +13,6 @@ import {
   MapPin
 } from "lucide-react";
 
-// 🌟 安全關聯讀取函式：相容物件或單一陣列物件
 const getRel = (obj: any) => (Array.isArray(obj) ? obj[0] : obj);
 
 export default function ClassesPage() {
@@ -28,14 +27,12 @@ export default function ClassesPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successMsg, setSuccessMsg] = useState("");
 
-  // 付費彈窗狀態
   const [bookingResult, setBookingResult] = useState<any | null>(null);
   const [paymentMode, setPaymentMode] = useState<'select' | 'online' | 'onsite'>('select');
   const [createdBookingId, setCreatedBookingId] = useState<number | null>(null);
   const [lineUrl, setLineUrl] = useState("https://lin.ee/your_line_id");
 
   const fetchClasses = async () => {
-    // 取得官方 LINE 連結
     const { data: settingData } = await supabase
       .from("settings")
       .select("value")
@@ -46,7 +43,6 @@ export default function ClassesPage() {
       setLineUrl(settingData.value);
     }
 
-    // 🌟 資安加固：僅抓取場地名稱與報名 status 統計人數，嚴禁洩露其他球友個資
     const { data, error } = await supabase
       .from("classes")
       .select(`
@@ -72,7 +68,6 @@ export default function ClassesPage() {
     fetchClasses();
   }, []);
 
-  // 檢查場次是否已過期
   const isSessionExpired = (sessionDate: string, startTime: string) => {
     if (!sessionDate || !startTime) return false;
     const now = new Date();
@@ -114,7 +109,6 @@ export default function ClassesPage() {
     setIsSubmitting(true);
 
     try {
-      // 呼叫資料庫安全交易函式，防止 Race Condition 超額報名
       const { data, error } = await supabase.rpc("register_class", {
         p_class_id: selectedClass.id,
         p_name: cleanName,
@@ -190,13 +184,13 @@ export default function ClassesPage() {
   const activeClasses = classes.filter(cls => !isSessionExpired(cls.class_date, cls.start_time));
 
   return (
-    <main className="min-h-screen max-w-md mx-auto bg-gray-50 flex flex-col pb-10">
-      {/* 修改處：加上 w-full 確保寬度填滿，並移除 relative 如果不需要 */}
-      <header className="w-full text-white p-4 flex items-center shadow-md bg-orange-600 z-10">
-        <Link href="/" className="mr-4 p-2 rounded-full transition bg-white/15">
-          <ArrowLeft size={24} />
+    <main className="w-full min-h-screen max-w-md mx-auto bg-gray-50 flex flex-col relative pb-10">
+      {/* 修正：加入 w-full 與 absolute 絕對置中 */}
+      <header className="w-full text-white py-4 px-4 flex items-center justify-center shadow-md bg-orange-600 relative z-10">
+        <Link href="/" className="absolute left-4 p-2 rounded-full transition bg-white/15 hover:bg-white/25 active:scale-95">
+          <ArrowLeft size={22} />
         </Link>
-        <h1 className="text-xl font-bold">體驗 / 教學課</h1>
+        <h1 className="text-lg font-bold tracking-wide">體驗 / 教學課</h1>
       </header>
 
       <div className="p-5 space-y-4">
@@ -224,7 +218,6 @@ export default function ClassesPage() {
                       <span className="text-xs px-2 py-0.5 rounded font-bold bg-orange-100 text-orange-800">
                         新手友善
                       </span>
-                      {/* 🌟 清楚顯示場地標籤 */}
                       <span className="text-xs px-2 py-0.5 rounded font-bold bg-gray-100 text-gray-700 flex items-center gap-1">
                         <MapPin size={11} className="text-orange-600" />
                         {courtName}
@@ -358,7 +351,6 @@ export default function ClassesPage() {
         )}
       </div>
 
-      {/* 課程報名成功付款 Modal */}
       {bookingResult && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 animate-in fade-in overflow-y-auto pt-10 pb-10">
           <div className="bg-white rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl animate-in zoom-in-95 my-auto">
