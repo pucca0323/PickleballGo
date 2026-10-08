@@ -210,12 +210,13 @@ export default function MyBookingsPage() {
   const paymentSession = activePaymentModal ? getRel(activePaymentModal.open_play_sessions) : null;
 
   return (
-    <main className="min-h-screen max-w-md mx-auto bg-gray-50 flex flex-col pb-32 relative overflow-x-hidden">
-      <header className="text-white h-16 flex items-center justify-center shadow-md bg-gray-800 relative z-10 w-full">
-        <Link href="/" className="absolute left-4 p-2 rounded-full bg-white/10 z-20">
-          <ArrowLeft size={24} />
+    <main className="w-full min-h-screen max-w-md mx-auto bg-gray-50 flex flex-col pb-10 relative">
+      {/* 修正：加入 justify-center 與 absolute 定位，確保標題完美置中且寬度填滿 */}
+      <header className="w-full text-white py-4 px-4 flex items-center justify-center shadow-md bg-gray-800 relative z-10">
+        <Link href="/" className="absolute left-4 p-2 rounded-full bg-white/10 transition hover:bg-white/20 active:scale-95">
+          <ArrowLeft size={22} />
         </Link>
-        <h1 className="text-xl font-bold px-12 truncate">查詢我的預約</h1>
+        <h1 className="text-lg font-bold tracking-wide">查詢我的預約</h1>
       </header>
 
       <div className="p-5 space-y-5">
@@ -352,10 +353,10 @@ export default function MyBookingsPage() {
                           <h3 className="font-bold text-gray-800">{session?.title}</h3>
                           <span
                             className={`text-xs px-2 py-1 rounded font-bold ${b.status === 'registered'
-                              ? 'bg-blue-100 text-blue-700'
-                              : b.status === 'waitlisted'
-                                ? 'bg-amber-100 text-amber-700'
-                                : 'bg-gray-100 text-gray-500'
+                                ? 'bg-blue-100 text-blue-700'
+                                : b.status === 'waitlisted'
+                                  ? 'bg-amber-100 text-amber-700'
+                                  : 'bg-gray-100 text-gray-500'
                               }`}
                           >
                             {b.status === 'registered' ? '正取' : b.status === 'waitlisted' ? '候補' : '已取消'}
