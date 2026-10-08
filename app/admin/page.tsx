@@ -41,10 +41,8 @@ export default function AdminPage() {
   const [classesList, setClassesList] = useState<any[]>([]);
   const [openPlaySessions, setOpenPlaySessions] = useState<any[]>([]);
 
-  // 現場核銷搜尋關鍵字
   const [checkInKeyword, setCheckInKeyword] = useState("");
 
-  // 資料庫持久化設定
   const [venueName, setVenueName] = useState("匹克球館");
   const [adminUser, setAdminUser] = useState("admin");
   const [adminPass, setAdminPass] = useState("888");
@@ -61,13 +59,11 @@ export default function AdminPage() {
   const [tempAnnouncementText, setTempAnnouncementText] = useState("");
   const [tempCancelLimitHours, setTempCancelLimitHours] = useState("3");
 
-  // 🌟 動態費率與特殊日狀態
   const [pricingRules, setPricingRules] = useState<any[]>([]);
   const [specialDates, setSpecialDates] = useState<any[]>([]);
   const [newSpecialDate, setNewSpecialDate] = useState("");
   const [newSpecialDesc, setNewSpecialDesc] = useState("");
 
-  // 新增費率規則表單狀態
   const [newRuleDayType, setNewRuleDayType] = useState("weekday");
   const [newRuleStart, setNewRuleStart] = useState("08:00");
   const [newRuleEnd, setNewRuleEnd] = useState("18:00");
@@ -83,7 +79,6 @@ export default function AdminPage() {
   const [editingClassId, setEditingClassId] = useState<string | null>(null);
   const [editingOpenPlayId, setEditingOpenPlayId] = useState<string | null>(null);
 
-  // 視覺化快選功能狀態
   const [showVisualSchedule, setShowVisualSchedule] = useState(false);
   const [visualDate, setVisualDate] = useState(() => {
     const tmrw = new Date();
@@ -92,7 +87,6 @@ export default function AdminPage() {
   });
   const [selectedGrid, setSelectedGrid] = useState<string[]>([]);
 
-  // 代客登記臨打 Modal 狀態
   const [agentBookingSession, setAgentBookingSession] = useState<any | null>(null);
   const [agentName, setAgentName] = useState("");
   const [agentPhone, setAgentPhone] = useState("");
@@ -257,11 +251,9 @@ export default function AdminPage() {
     const { data: courtsOptions } = await supabase.from("courts").select("*").order("name");
     if (courtsOptions) setCourtsList(courtsOptions);
 
-    // 🌟 撈取動態費率規則
     const { data: rulesData } = await supabase.from("pricing_rules").select("*").order("day_type").order("start_time");
     if (rulesData) setPricingRules(rulesData);
 
-    // 🌟 撈取特殊日 / 國定假日
     const { data: specialsData } = await supabase.from("special_dates").select("*").order("date", { ascending: true });
     if (specialsData) setSpecialDates(specialsData);
 
@@ -323,7 +315,6 @@ export default function AdminPage() {
     setLoading(false);
   };
 
-  // 🌟 特殊日新增與刪除 Handler
   const handleAddSpecialDate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newSpecialDate) return alert("請選擇日期！");
@@ -349,7 +340,6 @@ export default function AdminPage() {
     else fetchAllData();
   };
 
-  // 🌟 費率規則新增與刪除 Handler
   const handleAddPricingRule = async (e: React.FormEvent) => {
     e.preventDefault();
     const { error } = await supabase.from("pricing_rules").insert([
@@ -371,7 +361,6 @@ export default function AdminPage() {
     else fetchAllData();
   };
 
-  // 時間字串轉分鐘，方便比較時段
   const timeToMins = (t: string) => {
     if (!t) return 0;
     const [h, m] = t.split(':').map(Number);
@@ -996,7 +985,6 @@ export default function AdminPage() {
 
     if (!confirm("確定要將這位候補玩家轉為「正取」嗎？")) return;
 
-    // 🌟 更新狀態並更新 created_at 為當前時間，確保排在正取名單的最後面
     const { error } = await supabase.from("open_play_players").update({
       status: "registered",
       created_at: new Date().toISOString()
@@ -1036,7 +1024,6 @@ export default function AdminPage() {
         .maybeSingle();
 
       if (nextWaitlisted) {
-        // 🌟 自動遞補時同步更新 created_at，確保排在正取最後面
         await supabase.from("open_play_players").update({
           status: "registered",
           created_at: new Date().toISOString()
@@ -1071,7 +1058,7 @@ export default function AdminPage() {
 
   if (!isAuthenticated) {
     return (
-      <main className="min-h-screen max-w-md mx-auto bg-gray-50 flex flex-col justify-center px-6 pb-20">
+      <main className="w-full min-h-screen max-w-md mx-auto bg-gray-50 flex flex-col justify-center px-6 pb-20 relative">
         <div className="bg-white p-8 rounded-3xl shadow-lg border border-gray-100 space-y-6">
           <div className="text-center space-y-2">
             <div className="bg-emerald-100 text-emerald-600 w-12 h-12 rounded-full flex items-center justify-center mx-auto">
@@ -1113,16 +1100,14 @@ export default function AdminPage() {
   }
 
   return (
-    <main className="min-h-screen max-w-md mx-auto bg-gray-50 flex flex-col pb-10">
-      {/* 修改處：加上 w-full 確保寬度填滿滿，並移除 relative 如果不需要 */}
-      <header className="w-full text-white p-4 flex items-center justify-between shadow-md bg-gray-800 z-10">
-        <div className="flex items-center">
-          <Link href="/" className="mr-3 p-2 rounded-full bg-white/10">
-            <ArrowLeft size={20} />
-          </Link>
-          <h1 className="text-lg font-bold">{venueName} - 後台</h1>
-        </div>
-        <button onClick={handleLogout} className="text-xs px-3 py-1.5 rounded-lg text-white font-bold bg-gray-700">
+    <main className="w-full min-h-screen max-w-md mx-auto bg-gray-50 flex flex-col pb-10 relative">
+      {/* 修正：加入 w-full 與 absolute 絕對置中，確保標題完美置中 */}
+      <header className="w-full text-white py-4 px-4 flex items-center justify-center shadow-md bg-gray-800 relative z-10">
+        <Link href="/" className="absolute left-4 p-2 rounded-full transition bg-white/10 hover:bg-white/20 active:scale-95">
+          <ArrowLeft size={20} />
+        </Link>
+        <h1 className="text-lg font-bold tracking-wide">{venueName} - 後台</h1>
+        <button onClick={handleLogout} className="absolute right-4 text-xs px-3 py-1.5 rounded-lg text-white font-bold bg-gray-700 hover:bg-gray-600 transition">
           登出
         </button>
       </header>
@@ -1859,547 +1844,6 @@ export default function AdminPage() {
 
                                   <button
                                     onClick={() => handleCancelClassBooking(booking.id)}
-                                    className="text-xs text-red-500 hover:text-red-700 font-bold px-2 py-1 bg-red-50 border border-red-200 rounded"
-                                  >
-                                    取消
-                                  </button>
-                                </div>
-                              </div>
-                            ))
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            )}
-
-            {activeTab === 'open_plays' && (
-              <div className="space-y-4">
-                {showVisualSchedule ? (
-                  <div className="bg-white p-4 rounded-xl border border-blue-300 shadow-lg animate-in fade-in zoom-in-95">
-                    <div className="flex justify-between items-center mb-3 border-b pb-2">
-                      <h4 className="font-bold text-blue-800 flex items-center gap-1.5">
-                        <Eye size={18} /> 視覺化空檔快選
-                      </h4>
-                      <button onClick={() => { setShowVisualSchedule(false); setSelectedGrid([]); }} className="text-gray-400 hover:text-gray-600">
-                        <X size={20} />
-                      </button>
-                    </div>
-
-                    <div className="mb-4">
-                      <label className="text-xs text-gray-500 font-bold block mb-1">目標日期</label>
-                      <input
-                        type="date"
-                        value={visualDate}
-                        onChange={(e) => { setVisualDate(e.target.value); setSelectedGrid([]); }}
-                        className="w-full bg-gray-50 text-gray-900 border border-gray-300 p-2 rounded-lg text-sm focus:outline-none"
-                      />
-                    </div>
-
-                    <p className="text-[11px] text-gray-500 mb-2 font-bold flex items-center gap-1">
-                      <MousePointerClick size={12} /> 點擊綠色格子選擇空檔 (可跨時間與跨場地)
-                    </p>
-
-                    <div className="overflow-x-auto max-h-[400px] border border-gray-200 rounded-lg">
-                      <table className="w-full text-xs text-center border-collapse">
-                        <thead className="sticky top-0 z-20 shadow-sm">
-                          <tr>
-                            <th className="border-b p-2 bg-gray-100 text-gray-600 font-bold sticky left-0 z-30 w-16">時間</th>
-                            {courtsList.map(c => (
-                              <th key={c.id} className="border-b border-l p-2 bg-gray-100 text-gray-700 font-bold min-w-[80px]">
-                                {c.name}
-                              </th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {timeSlots.map(time => (
-                            <tr key={time}>
-                              <td className="border-b p-1.5 bg-gray-50 sticky left-0 z-10 font-bold text-gray-500">{time}</td>
-                              {courtsList.map(c => {
-                                const status = checkIsOccupied(c.id, time);
-                                const cellKey = `${c.id}_${time}`;
-                                const isSelected = selectedGrid.includes(cellKey);
-
-                                if (status.occupied) {
-                                  return (
-                                    <td key={c.id} className="border-b border-l p-1 bg-gray-200">
-                                      <span className="text-[10px] text-gray-500 font-bold block">{status.label}</span>
-                                    </td>
-                                  );
-                                }
-                                return (
-                                  <td
-                                    key={c.id}
-                                    onClick={() => toggleCellSelection(cellKey)}
-                                    className={`border-b border-l p-1 cursor-pointer transition select-none ${isSelected
-                                        ? 'bg-blue-500 text-white font-bold'
-                                        : 'bg-green-50 text-green-700 hover:bg-green-200 font-medium'
-                                      }`}
-                                  >
-                                    {isSelected ? '已選' : '空檔'}
-                                  </td>
-                                );
-                              })}
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-
-                    <button
-                      onClick={handleQuickConvertOpenPlay}
-                      className="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl shadow-md transition"
-                    >
-                      將選取的 {selectedGrid.length} 個時段轉為臨打
-                    </button>
-                  </div>
-                ) : (
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => setIsAddingOpenPlay(!isAddingOpenPlay)}
-                      className="flex-1 py-3 bg-blue-100 text-blue-700 font-bold rounded-xl flex justify-center items-center gap-2 border border-blue-200 transition hover:bg-blue-200"
-                    >
-                      {isAddingOpenPlay ? <><X size={18} /> 取消新增</> : <><Plus size={18} /> 一般新增臨打</>}
-                    </button>
-
-                    <button
-                      onClick={() => { setShowVisualSchedule(true); setIsAddingOpenPlay(false); }}
-                      className="flex-1 py-3 bg-indigo-100 text-indigo-700 font-bold rounded-xl flex justify-center items-center gap-2 border border-indigo-200 transition hover:bg-indigo-200"
-                    >
-                      <Eye size={18} /> 空檔視覺化快選
-                    </button>
-                  </div>
-                )}
-
-                {isAddingOpenPlay && (
-                  <form
-                    onSubmit={submitNewOpenPlay}
-                    className="bg-white p-4 rounded-xl border-2 border-blue-400 space-y-3 shadow-md animate-in fade-in"
-                  >
-                    <div className="flex justify-between items-center border-b pb-2">
-                      <h4 className="font-bold text-blue-800 text-sm">新增臨打場次</h4>
-                      <button
-                        type="button"
-                        onClick={() => setIsAddingOpenPlay(false)}
-                        className="text-gray-400 hover:text-gray-600"
-                      >
-                        <X size={18} />
-                      </button>
-                    </div>
-
-                    <input
-                      type="text"
-                      placeholder="場次名稱"
-                      required
-                      className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
-                      style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                      value={newOpenPlay.title}
-                      onChange={(e) => setNewOpenPlay({ ...newOpenPlay, title: e.target.value })}
-                    />
-
-                    <div>
-                      <label className="text-xs text-gray-500 mb-1 block">開放場地 (可多選)</label>
-                      <div className="flex flex-wrap gap-2">
-                        {courtsList.map(court => (
-                          <label key={court.id} className="flex items-center gap-1.5 text-sm bg-gray-50 border px-3 py-1.5 rounded-lg cursor-pointer">
-                            <input
-                              type="checkbox"
-                              className="accent-blue-600"
-                              checked={newOpenPlay.court_ids.includes(court.id)}
-                              onChange={(e) => {
-                                const newCourts = e.target.checked
-                                  ? [...newOpenPlay.court_ids, court.id]
-                                  : newOpenPlay.court_ids.filter((id: string) => id !== court.id);
-                                setNewOpenPlay({ ...newOpenPlay, court_ids: newCourts });
-                              }}
-                            />
-                            {court.name}
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="text-xs text-gray-500 mb-1 block">DUPR 等級 (可多選)</label>
-                      <div className="flex flex-wrap gap-2">
-                        {['2.0', '2.5', '3.0', '3.5', '4.0'].map(lvl => (
-                          <label key={lvl} className="flex items-center gap-1.5 text-sm bg-gray-50 border px-3 py-1.5 rounded-lg cursor-pointer">
-                            <input
-                              type="checkbox"
-                              className="accent-blue-600"
-                              checked={newOpenPlay.level.includes(lvl)}
-                              onChange={(e) => {
-                                const newLevels = e.target.checked
-                                  ? [...newOpenPlay.level, lvl]
-                                  : newOpenPlay.level.filter(l => l !== lvl);
-                                setNewOpenPlay({ ...newOpenPlay, level: newLevels });
-                              }}
-                            />
-                            {lvl}
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-
-                    <input
-                      type="date"
-                      required
-                      className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
-                      style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                      value={newOpenPlay.session_date}
-                      onChange={(e) => setNewOpenPlay({ ...newOpenPlay, session_date: e.target.value })}
-                    />
-                    <div className="flex gap-2">
-                      <input
-                        type="time"
-                        required
-                        className="flex-1 bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
-                        style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                        value={newOpenPlay.start_time}
-                        onChange={(e) => setNewOpenPlay({ ...newOpenPlay, start_time: e.target.value })}
-                      />
-                      <input
-                        type="time"
-                        required
-                        className="flex-1 bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
-                        style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                        value={newOpenPlay.end_time}
-                        onChange={(e) => setNewOpenPlay({ ...newOpenPlay, end_time: e.target.value })}
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-3 gap-2">
-                      <div>
-                        <label className="text-xs text-gray-500 mb-1 block">正取人數</label>
-                        <input
-                          type="number"
-                          required
-                          className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
-                          style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                          value={newOpenPlay.max_players}
-                          onChange={(e) => setNewOpenPlay({ ...newOpenPlay, max_players: Number(e.target.value) })}
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs text-gray-500 mb-1 block">候補人數</label>
-                        <input
-                          type="number"
-                          required
-                          className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
-                          style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                          value={newOpenPlay.max_waitlist}
-                          onChange={(e) => setNewOpenPlay({ ...newOpenPlay, max_waitlist: Number(e.target.value) })}
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs text-gray-500 mb-1 block">價格 (元)</label>
-                        <input
-                          type="number"
-                          required
-                          className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
-                          style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                          value={newOpenPlay.price}
-                          onChange={(e) => setNewOpenPlay({ ...newOpenPlay, price: Number(e.target.value) })}
-                        />
-                      </div>
-                    </div>
-
-                    <input
-                      type="text"
-                      placeholder="備註 (選填，例如：含教練指導)"
-                      className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
-                      style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                      value={newOpenPlay.notes}
-                      onChange={(e) => setNewOpenPlay({ ...newOpenPlay, notes: e.target.value })}
-                    />
-
-                    <button type="submit" className="w-full bg-blue-600 text-white font-bold py-2 rounded-lg shadow">
-                      確認新增
-                    </button>
-                  </form>
-                )}
-
-                {openPlaySessions.length === 0 ? (
-                  <p className="text-center text-gray-500 mt-10">無臨打場次</p>
-                ) : (
-                  openPlaySessions.map((session) => {
-                    const activePlayers = session.open_play_players?.filter((p: any) => p.status !== 'cancelled') || [];
-
-                    if (editingOpenPlayId === session.id) {
-                      return (
-                        <form
-                          key={session.id}
-                          onSubmit={submitEditOpenPlay}
-                          className="bg-blue-50 p-4 rounded-xl border-2 border-blue-400 space-y-3 shadow-md animate-in fade-in"
-                        >
-                          <h4 className="font-bold text-blue-800 border-b border-blue-200 pb-2">✏️ 編輯臨打場次</h4>
-                          <input
-                            type="text"
-                            placeholder="場次名稱"
-                            required
-                            className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
-                            style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                            value={editOpenPlay.title}
-                            onChange={(e) => setEditOpenPlay({ ...editOpenPlay, title: e.target.value })}
-                          />
-
-                          <div>
-                            <label className="text-xs text-gray-500 mb-1 block">開放場地 (可多選)</label>
-                            <div className="flex flex-wrap gap-2">
-                              {courtsList.map(court => (
-                                <label key={court.id} className="flex items-center gap-1.5 text-sm bg-gray-50 border px-3 py-1.5 rounded-lg cursor-pointer">
-                                  <input
-                                    type="checkbox"
-                                    className="accent-blue-600"
-                                    checked={editOpenPlay.court_ids.includes(court.id)}
-                                    onChange={(e) => {
-                                      const newCourts = e.target.checked
-                                        ? [...editOpenPlay.court_ids, court.id]
-                                        : editOpenPlay.court_ids.filter(id => id !== court.id);
-                                      setEditOpenPlay({ ...editOpenPlay, court_ids: newCourts });
-                                    }}
-                                  />
-                                  {court.name}
-                                </label>
-                              ))}
-                            </div>
-                          </div>
-
-                          <div>
-                            <label className="text-xs text-gray-500 mb-1 block">DUPR 等級 (可多選)</label>
-                            <div className="flex flex-wrap gap-2">
-                              {['2.0', '2.5', '3.0', '3.5', '4.0'].map(lvl => (
-                                <label key={lvl} className="flex items-center gap-1.5 text-sm bg-gray-50 border px-3 py-1.5 rounded-lg cursor-pointer">
-                                  <input
-                                    type="checkbox"
-                                    className="accent-blue-600"
-                                    checked={editOpenPlay.level.includes(lvl)}
-                                    onChange={(e) => {
-                                      const newLevels = e.target.checked
-                                        ? [...editOpenPlay.level, lvl]
-                                        : editOpenPlay.level.filter(l => l !== lvl);
-                                      setEditOpenPlay({ ...editOpenPlay, level: newLevels });
-                                    }}
-                                  />
-                                  {lvl}
-                                </label>
-                              ))}
-                            </div>
-                          </div>
-
-                          <input
-                            type="date"
-                            required
-                            className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
-                            style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                            value={editOpenPlay.session_date}
-                            onChange={(e) => setEditOpenPlay({ ...editOpenPlay, session_date: e.target.value })}
-                          />
-                          <div className="flex gap-2">
-                            <input
-                              type="time"
-                              required
-                              className="flex-1 bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
-                              style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                              value={editOpenPlay.start_time}
-                              onChange={(e) => setEditOpenPlay({ ...editOpenPlay, start_time: e.target.value })}
-                            />
-                            <input
-                              type="time"
-                              required
-                              className="flex-1 bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
-                              style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                              value={editOpenPlay.end_time}
-                              onChange={(e) => setEditOpenPlay({ ...editOpenPlay, end_time: e.target.value })}
-                            />
-                          </div>
-
-                          <div className="grid grid-cols-3 gap-2">
-                            <div>
-                              <label className="text-xs text-gray-500 mb-1 block">正取人數</label>
-                              <input
-                                type="number"
-                                required
-                                className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
-                                style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                                value={editOpenPlay.max_players}
-                                onChange={(e) => setEditOpenPlay({ ...editOpenPlay, max_players: Number(e.target.value) })}
-                              />
-                            </div>
-                            <div>
-                              <label className="text-xs text-gray-500 mb-1 block">候補人數</label>
-                              <input
-                                type="number"
-                                required
-                                className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
-                                style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                                value={editOpenPlay.max_waitlist}
-                                onChange={(e) => setEditOpenPlay({ ...editOpenPlay, max_waitlist: Number(e.target.value) })}
-                              />
-                            </div>
-                            <div>
-                              <label className="text-xs text-gray-500 mb-1 block">價格 (元)</label>
-                              <input
-                                type="number"
-                                required
-                                className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
-                                style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                                value={editOpenPlay.price}
-                                onChange={(e) => setEditOpenPlay({ ...editOpenPlay, price: Number(e.target.value) })}
-                              />
-                            </div>
-                          </div>
-
-                          <input
-                            type="text"
-                            placeholder="備註 (選填，例如：含教練指導)"
-                            className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
-                            style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                            value={editOpenPlay.notes}
-                            onChange={(e) => setEditOpenPlay({ ...editOpenPlay, notes: e.target.value })}
-                          />
-
-                          <div className="flex gap-2 pt-2">
-                            <button
-                              type="button"
-                              onClick={() => setEditingOpenPlayId(null)}
-                              className="flex-1 bg-white border border-gray-300 text-gray-600 font-bold py-2 rounded-lg text-sm"
-                            >
-                              取消
-                            </button>
-                            <button
-                              type="submit"
-                              className="flex-1 bg-blue-600 text-white font-bold py-2 rounded-lg text-sm shadow"
-                            >
-                              儲存修改
-                            </button>
-                          </div>
-                        </form>
-                      );
-                    }
-
-                    return (
-                      <div key={session.id} className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-                        <div className="bg-blue-50 p-4 border-b border-blue-100 flex justify-between items-start">
-                          <div>
-                            <span className="text-xs font-bold text-blue-700 bg-blue-100 px-2 py-0.5 rounded mb-1 inline-block">
-                              DUPR {session.level}
-                            </span>
-                            <h3 className="font-bold text-gray-800 text-base">{session.title}</h3>
-                            <p className="text-sm text-gray-600 mt-1">
-                              📅 {session.session_date} | {session.start_time?.slice(0, 5)}-{session.end_time?.slice(0, 5)}
-                            </p>
-                            <p className="text-xs text-blue-600 font-bold mt-1">
-                              💰 ${session.price} / 人 (正取 {session.max_players} 人 / 候補 {session.max_waitlist} 人)
-                            </p>
-                            {session.notes && <p className="text-xs text-gray-500 mt-1">📝 館方備註：{session.notes}</p>}
-                          </div>
-
-                          <div className="flex flex-col items-end gap-2 shrink-0">
-                            <span className="text-xs font-bold text-blue-700 bg-blue-200 px-2 py-1 rounded">
-                              {getCourtNames(session)}
-                            </span>
-                            <div className="flex items-center gap-2 mt-1">
-                              <button
-                                onClick={() => handleDuplicateOpenPlay(session)}
-                                title="複製為新場次"
-                                className="flex items-center gap-0.5 text-xs font-bold text-gray-600 hover:text-gray-900 bg-white border border-gray-300 px-1.5 py-1 rounded"
-                              >
-                                <Copy size={12} /> 複製
-                              </button>
-                              <button
-                                onClick={() => startEditingOpenPlay(session)}
-                                className="flex items-center gap-1 text-xs font-bold text-blue-600 hover:text-blue-800"
-                              >
-                                <Edit size={14} /> 編輯
-                              </button>
-                              <button
-                                onClick={() => handleDeleteOpenPlaySession(session.id)}
-                                className="flex items-center gap-1 text-xs font-bold text-red-500 hover:text-red-700"
-                              >
-                                <Trash2 size={14} /> 刪除
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="p-4 space-y-3">
-                          <div className="flex justify-between items-center pb-2 border-b border-gray-100">
-                            <span className="text-xs font-bold text-gray-500">
-                              目前報名名冊 ({activePlayers.length} 人)
-                            </span>
-                            <button
-                              onClick={() => setAgentBookingSession(session)}
-                              className="text-xs font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1 bg-blue-50 border border-blue-200 px-2.5 py-1 rounded-lg"
-                            >
-                              <UserPlus size={13} /> 代客登記球友
-                            </button>
-                          </div>
-
-                          {activePlayers.length === 0 ? (
-                            <p className="text-sm text-gray-400 text-center py-2">目前無人報名</p>
-                          ) : (
-                            activePlayers.map((player: any) => (
-                              <div
-                                key={player.id}
-                                className="flex flex-col sm:flex-row justify-between items-start sm:items-center text-sm bg-gray-50 p-3 rounded-xl border border-gray-100 gap-2"
-                              >
-                                <div className="flex-1">
-                                  <div className="flex items-center gap-2 flex-wrap">
-                                    <span
-                                      className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${player.status === 'registered'
-                                          ? 'bg-blue-100 text-blue-700'
-                                          : 'bg-amber-100 text-amber-700'
-                                        }`}
-                                    >
-                                      {player.status === 'registered' ? '正取' : '候補'}
-                                    </span>
-                                    <span className="font-semibold text-gray-800">{player.users?.name}</span>
-                                    <span className="text-gray-500 text-xs">({player.users?.phone})</span>
-
-                                    <span
-                                      className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${player.payment_method === 'online'
-                                          ? 'bg-green-100 text-green-700'
-                                          : 'bg-gray-200 text-gray-700'
-                                        }`}
-                                    >
-                                      {player.payment_method === 'online' ? '📱 線上付款' : '💵 現場付款'}
-                                    </span>
-                                  </div>
-
-                                  {player.player_notes && (
-                                    <p className="text-xs text-gray-500 mt-1">💬 備註：{player.player_notes}</p>
-                                  )}
-                                </div>
-
-                                <div className="flex items-center gap-2 w-full sm:w-auto justify-end pt-2 sm:pt-0 border-t sm:border-t-0 border-gray-200">
-                                  {player.status === 'registered' && (
-                                    <button
-                                      onClick={() => handleToggleOpenPlayPayment(player.id, player.payment_status)}
-                                      className={`text-xs font-bold px-2.5 py-1.5 rounded-lg border transition flex items-center gap-1 ${player.payment_status === 'paid'
-                                          ? 'bg-emerald-500 text-white border-emerald-600'
-                                          : 'bg-amber-100 text-amber-800 border-amber-300'
-                                        }`}
-                                    >
-                                      <DollarSign size={14} />
-                                      {player.payment_status === 'paid' ? '已收款' : '待收款'}
-                                    </button>
-                                  )}
-
-                                  {player.status === 'waitlisted' && (
-                                    <button
-                                      onClick={() => handlePromotePlayer(player.id, session.id)}
-                                      className="text-xs flex items-center gap-1 text-emerald-600 hover:text-emerald-800 font-bold px-2 py-1 bg-emerald-50 border border-emerald-200 rounded"
-                                    >
-                                      <CheckCircle size={12} /> 轉正取
-                                    </button>
-                                  )}
-
-                                  <button
-                                    onClick={() => handleCancelOpenPlayPlayer(player.id)}
                                     className="text-xs text-red-500 hover:text-red-700 font-bold px-2 py-1 bg-red-50 border border-red-200 rounded"
                                   >
                                     取消
