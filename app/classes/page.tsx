@@ -3,16 +3,17 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../../lib/supabase";
 import Link from "next/link";
-import { 
-  ArrowLeft, 
-  UserCircle, 
-  CheckCircle2, 
-  QrCode, 
-  Copy, 
+import {
+  ArrowLeft,
+  UserCircle,
+  CheckCircle2,
+  QrCode,
+  Copy,
   MessageCircle,
-  MapPin 
+  MapPin
 } from "lucide-react";
 
+// 🌟 安全關聯讀取函式：相容物件或單一陣列物件
 const getRel = (obj: any) => (Array.isArray(obj) ? obj[0] : obj);
 
 export default function ClassesPage() {
@@ -27,18 +28,14 @@ export default function ClassesPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successMsg, setSuccessMsg] = useState("");
 
+  // 付費彈窗狀態
   const [bookingResult, setBookingResult] = useState<any | null>(null);
   const [paymentMode, setPaymentMode] = useState<'select' | 'online' | 'onsite'>('select');
   const [createdBookingId, setCreatedBookingId] = useState<number | null>(null);
   const [lineUrl, setLineUrl] = useState("https://lin.ee/your_line_id");
 
   const fetchClasses = async () => {
-    // 🌟 初始化時，自動從瀏覽器讀取上次記住的姓名與手機
-    const savedName = localStorage.getItem("pickle_user_name");
-    const savedPhone = localStorage.getItem("pickle_user_phone");
-    if (savedName) setName(savedName);
-    if (savedPhone) setPhone(savedPhone);
-
+    // 取得官方 LINE 連結
     const { data: settingData } = await supabase
       .from("settings")
       .select("value")
@@ -49,6 +46,7 @@ export default function ClassesPage() {
       setLineUrl(settingData.value);
     }
 
+    // 🌟 資安加固：僅抓取場地名稱與報名 status 統計人數，嚴禁洩露其他球友個資
     const { data, error } = await supabase
       .from("classes")
       .select(`
@@ -74,17 +72,18 @@ export default function ClassesPage() {
     fetchClasses();
   }, []);
 
+  // 檢查場次是否已過期
   const isSessionExpired = (sessionDate: string, startTime: string) => {
     if (!sessionDate || !startTime) return false;
     const now = new Date();
     const todayStr = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().split("T")[0];
-    
+
     if (sessionDate < todayStr) return true;
     if (sessionDate === todayStr) {
       const currentHours = now.getHours().toString().padStart(2, '0');
       const currentMins = now.getMinutes().toString().padStart(2, '0');
       const currentTimeStr = `${currentHours}:${currentMins}`;
-      
+
       const sessionStartTime = startTime.slice(0, 5);
       if (sessionStartTime <= currentTimeStr) return true;
     }
@@ -93,6 +92,8 @@ export default function ClassesPage() {
 
   const resetForm = () => {
     setSelectedClass(null);
+    setName("");
+    setPhone("");
     setNeedPaddle(false);
     setNotes("");
   };
@@ -113,6 +114,7 @@ export default function ClassesPage() {
     setIsSubmitting(true);
 
     try {
+      // 呼叫資料庫安全交易函式，防止 Race Condition 超額報名
       const { data, error } = await supabase.rpc("register_class", {
         p_class_id: selectedClass.id,
         p_name: cleanName,
@@ -130,10 +132,6 @@ export default function ClassesPage() {
         resetForm();
         return;
       }
-
-      // 🌟 報名成功後，將姓名與手機儲存至瀏覽器本地記憶
-      localStorage.setItem("pickle_user_name", cleanName);
-      localStorage.setItem("pickle_user_phone", cleanPhone);
 
       const courtName = getRel(selectedClass.courts)?.name || "1號場地";
 
@@ -162,12 +160,10 @@ export default function ClassesPage() {
   const updatePaymentMethod = async (method: 'online' | 'onsite') => {
     setPaymentMode(method);
     if (createdBookingId) {
-      await supabase.rpc("update_my_payment_method", {
-        p_table_name: "class_bookings",
-        p_booking_ids: [String(createdBookingId)],
-        p_phone: phone.trim(),
-        p_payment_method: method
-      });
+      await supabase
+        .from("class_bookings")
+        .update({ payment_method: method })
+        .eq("id", createdBookingId);
     }
   };
 
@@ -194,8 +190,9 @@ export default function ClassesPage() {
   const activeClasses = classes.filter(cls => !isSessionExpired(cls.class_date, cls.start_time));
 
   return (
-    <main className="min-h-screen max-w-md mx-auto bg-gray-50 flex flex-col relative pb-10">
-      <header className="text-white p-4 flex items-center shadow-md bg-orange-600">
+    <main className="min-h-screen max-w-md mx-auto bg-gray-50 flex flex-col pb-10">
+      {/* 修改處：加上 w-full 確保寬度填滿，並移除 relative 如果不需要 */}
+      <header className="w-full text-white p-4 flex items-center shadow-md bg-orange-600 z-10">
         <Link href="/" className="mr-4 p-2 rounded-full transition bg-white/15">
           <ArrowLeft size={24} />
         </Link>
@@ -227,6 +224,7 @@ export default function ClassesPage() {
                       <span className="text-xs px-2 py-0.5 rounded font-bold bg-orange-100 text-orange-800">
                         新手友善
                       </span>
+                      {/* 🌟 清楚顯示場地標籤 */}
                       <span className="text-xs px-2 py-0.5 rounded font-bold bg-gray-100 text-gray-700 flex items-center gap-1">
                         <MapPin size={11} className="text-orange-600" />
                         {courtName}
@@ -268,11 +266,10 @@ export default function ClassesPage() {
                       setSelectedClass(cls);
                       setSuccessMsg("");
                     }}
-                    className={`w-full font-bold py-3 rounded-xl transition-all shadow-md ${
-                      isFull
+                    className={`w-full font-bold py-3 rounded-xl transition-all shadow-md ${isFull
                         ? 'bg-gray-200 text-gray-400 cursor-not-allowed shadow-none'
                         : 'text-white bg-orange-600 active:scale-95 cursor-pointer'
-                    }`}
+                      }`}
                   >
                     {isFull ? '已額滿' : '我要報名'}
                   </button>

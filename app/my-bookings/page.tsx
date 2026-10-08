@@ -18,7 +18,6 @@ import {
   Lock,
 } from "lucide-react";
 
-// 🌟 安全讀取函式：相容物件或陣列
 const getRel = (obj: any) => (Array.isArray(obj) ? obj[0] : obj);
 
 export default function MyBookingsPage() {
@@ -27,7 +26,6 @@ export default function MyBookingsPage() {
   const [hasSearched, setHasSearched] = useState(false);
   const [user, setUser] = useState<any | null>(null);
 
-  // 🌟 調整順序：預設為「場地」
   const [activeTab, setActiveTab] = useState<'courts' | 'open_plays' | 'classes'>('courts');
 
   const [courtBookings, setCourtBookings] = useState<any[]>([]);
@@ -48,7 +46,7 @@ export default function MyBookingsPage() {
         .from("settings")
         .select("*")
         .in("key", ["cancel_limit_hours", "line_url"]);
-      
+
       if (data) {
         const config: Record<string, string> = {};
         data.forEach((item) => {
@@ -69,15 +67,14 @@ export default function MyBookingsPage() {
   const isCancellable = (dateStr: string, timeStr: string) => {
     if (cancelLimitHours === 0) return true;
     if (!dateStr || !timeStr) return false;
-    
+
     const sessionDateTime = new Date(`${dateStr}T${timeStr}`);
     const now = new Date();
     const diffHours = (sessionDateTime.getTime() - now.getTime()) / (1000 * 60 * 60);
-    
+
     return diffHours >= cancelLimitHours;
   };
 
-  // 🌟 安全查詢：透過 RPC 防範全表爬取
   const handleSearch = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     const cleanPhone = phone.trim();
@@ -104,7 +101,6 @@ export default function MyBookingsPage() {
 
       setUser(data.user);
 
-      // 場地連續時段自動合併處理
       const courtData = data.court_bookings || [];
       const groupedCourts = [];
       let currentGroup: any = null;
@@ -140,7 +136,6 @@ export default function MyBookingsPage() {
     }
   };
 
-  // 🌟 安全取消：附帶手機身分驗證與後端事務級自動遞補
   const handleCancelBooking = async (tableName: string, targetId: string | string[], dateStr: string, timeStr: string) => {
     if (cancelLimitHours > 0) {
       if (!dateStr || !timeStr) return alert("無法取得場次時間，請聯繫客服！");
@@ -174,7 +169,6 @@ export default function MyBookingsPage() {
     }
   };
 
-  // 🌟 安全修改個人備註：校驗手機防越權
   const handleSaveNote = async (id: string) => {
     try {
       const { data, error } = await supabase.rpc("user_update_player_note", {
@@ -216,12 +210,12 @@ export default function MyBookingsPage() {
   const paymentSession = activePaymentModal ? getRel(activePaymentModal.open_play_sessions) : null;
 
   return (
-    <main className="min-h-screen max-w-md mx-auto bg-gray-50 flex flex-col pb-10 relative">
-      <header className="text-white p-4 flex items-center shadow-md bg-gray-800 relative z-10">
-        <Link href="/" className="mr-4 p-2 rounded-full bg-white/10">
+    <main className="min-h-screen max-w-md mx-auto bg-gray-50 flex flex-col pb-32 relative overflow-x-hidden">
+      <header className="text-white h-16 flex items-center justify-center shadow-md bg-gray-800 relative z-10 w-full">
+        <Link href="/" className="absolute left-4 p-2 rounded-full bg-white/10 z-20">
           <ArrowLeft size={24} />
         </Link>
-        <h1 className="text-xl font-bold">查詢我的預約</h1>
+        <h1 className="text-xl font-bold px-12 truncate">查詢我的預約</h1>
       </header>
 
       <div className="p-5 space-y-5">
@@ -261,29 +255,25 @@ export default function MyBookingsPage() {
               <span className="text-xs text-gray-300">{user.phone}</span>
             </div>
 
-            {/* 🌟 依指定順序排列：場地 -> 臨打 -> 課程 */}
             <div className="flex gap-1 bg-gray-200 p-1 rounded-xl">
               <button
                 onClick={() => setActiveTab('courts')}
-                className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1 ${
-                  activeTab === 'courts' ? 'shadow-sm bg-white text-emerald-600' : 'opacity-60 text-gray-600'
-                }`}
+                className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1 ${activeTab === 'courts' ? 'shadow-sm bg-white text-emerald-600' : 'opacity-60 text-gray-600'
+                  }`}
               >
                 <Calendar size={14} /> 場地
               </button>
               <button
                 onClick={() => setActiveTab('open_plays')}
-                className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1 ${
-                  activeTab === 'open_plays' ? 'shadow-sm bg-white text-blue-600' : 'opacity-60 text-gray-600'
-                }`}
+                className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1 ${activeTab === 'open_plays' ? 'shadow-sm bg-white text-blue-600' : 'opacity-60 text-gray-600'
+                  }`}
               >
                 <Users size={14} /> 臨打
               </button>
               <button
                 onClick={() => setActiveTab('classes')}
-                className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1 ${
-                  activeTab === 'classes' ? 'shadow-sm bg-white text-orange-600' : 'opacity-60 text-gray-600'
-                }`}
+                className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1 ${activeTab === 'classes' ? 'shadow-sm bg-white text-orange-600' : 'opacity-60 text-gray-600'
+                  }`}
               >
                 <GraduationCap size={14} /> 課程
               </button>
@@ -300,16 +290,14 @@ export default function MyBookingsPage() {
                     return (
                       <div
                         key={b.ids[0] + index}
-                        className={`bg-white p-4 rounded-xl shadow-sm border-l-4 ${
-                          b.status === 'cancelled' ? 'border-gray-300 opacity-60' : 'border-emerald-500'
-                        }`}
+                        className={`bg-white p-4 rounded-xl shadow-sm border-l-4 ${b.status === 'cancelled' ? 'border-gray-300 opacity-60' : 'border-emerald-500'
+                          }`}
                       >
                         <div className="flex justify-between items-start mb-2">
                           <h3 className="font-bold text-gray-800">{court?.name}</h3>
                           <span
-                            className={`text-xs px-2 py-1 rounded font-bold ${
-                              b.status === 'booked' ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'
-                            }`}
+                            className={`text-xs px-2 py-1 rounded font-bold ${b.status === 'booked' ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'
+                              }`}
                           >
                             {b.status === 'booked' ? '預約成功' : '已取消'}
                           </span>
@@ -353,24 +341,22 @@ export default function MyBookingsPage() {
                   openPlayBookings.map((b) => {
                     const session = getRel(b.open_play_sessions);
                     const court = getRel(session?.courts);
-                    
+
                     return (
                       <div
                         key={b.id}
-                        className={`bg-white p-4 rounded-xl shadow-sm border-l-4 ${
-                          b.status === 'cancelled' ? 'border-gray-300 opacity-60' : 'border-blue-500'
-                        }`}
+                        className={`bg-white p-4 rounded-xl shadow-sm border-l-4 ${b.status === 'cancelled' ? 'border-gray-300 opacity-60' : 'border-blue-500'
+                          }`}
                       >
                         <div className="flex justify-between items-start mb-2">
                           <h3 className="font-bold text-gray-800">{session?.title}</h3>
                           <span
-                            className={`text-xs px-2 py-1 rounded font-bold ${
-                              b.status === 'registered'
-                                ? 'bg-blue-100 text-blue-700'
-                                : b.status === 'waitlisted'
+                            className={`text-xs px-2 py-1 rounded font-bold ${b.status === 'registered'
+                              ? 'bg-blue-100 text-blue-700'
+                              : b.status === 'waitlisted'
                                 ? 'bg-amber-100 text-amber-700'
                                 : 'bg-gray-100 text-gray-500'
-                            }`}
+                              }`}
                           >
                             {b.status === 'registered' ? '正取' : b.status === 'waitlisted' ? '候補' : '已取消'}
                           </span>
@@ -447,7 +433,7 @@ export default function MyBookingsPage() {
                             </div>
                           )}
                         </div>
-                        
+
                         {b.status !== 'cancelled' && (
                           isCancellable(session?.session_date, session?.start_time) ? (
                             <button
@@ -487,16 +473,14 @@ export default function MyBookingsPage() {
                     return (
                       <div
                         key={b.id}
-                        className={`bg-white p-4 rounded-xl shadow-sm border-l-4 ${
-                          b.status === 'cancelled' ? 'border-gray-300 opacity-60' : 'border-orange-500'
-                        }`}
+                        className={`bg-white p-4 rounded-xl shadow-sm border-l-4 ${b.status === 'cancelled' ? 'border-gray-300 opacity-60' : 'border-orange-500'
+                          }`}
                       >
                         <div className="flex justify-between items-start mb-2">
                           <h3 className="font-bold text-gray-800">{cls?.title}</h3>
                           <span
-                            className={`text-xs px-2 py-1 rounded font-bold ${
-                              b.status === 'booked' ? 'bg-orange-100 text-orange-700' : 'bg-gray-100 text-gray-500'
-                            }`}
+                            className={`text-xs px-2 py-1 rounded font-bold ${b.status === 'booked' ? 'bg-orange-100 text-orange-700' : 'bg-gray-100 text-gray-500'
+                              }`}
                           >
                             {b.status === 'booked' ? '報名成功' : '已取消'}
                           </span>
@@ -508,7 +492,7 @@ export default function MyBookingsPage() {
                           </p>
                           <p>🧑‍🏫 教練: {cls?.coach}</p>
                         </div>
-                        
+
                         {b.status === 'booked' && (
                           isCancellable(cls?.class_date, cls?.start_time) ? (
                             <button

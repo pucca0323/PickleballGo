@@ -22,12 +22,6 @@ export default function OpenPlayPage() {
   const [lineUrl, setLineUrl] = useState("https://lin.ee/your_line_id");
 
   const fetchData = async () => {
-    // 🌟 初始化時，自動從瀏覽器讀取上次記住的姓名與手機
-    const savedName = localStorage.getItem("pickle_user_name");
-    const savedPhone = localStorage.getItem("pickle_user_phone");
-    if (savedName) setName(savedName);
-    if (savedPhone) setPhone(savedPhone);
-
     const { data: settingData } = await supabase
       .from("settings")
       .select("value")
@@ -63,16 +57,17 @@ export default function OpenPlayPage() {
     if (!sessionDate || !startTime) return false;
     const now = new Date();
     const todayStr = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().split("T")[0];
-    
+
     if (sessionDate < todayStr) return true;
     if (sessionDate === todayStr) {
       const currentHours = now.getHours().toString().padStart(2, '0');
       const currentMins = now.getMinutes().toString().padStart(2, '0');
       const currentTimeStr = `${currentHours}:${currentMins}`;
-      
+
       const sessionStartTime = startTime.slice(0, 5);
       if (sessionStartTime <= currentTimeStr) return true;
     }
+
     return false;
   };
 
@@ -107,11 +102,7 @@ export default function OpenPlayPage() {
         return;
       }
 
-      // 🌟 報名成功後，將姓名與手機儲存至瀏覽器本地記憶
-      localStorage.setItem("pickle_user_name", name.trim());
-      localStorage.setItem("pickle_user_phone", phone.trim());
-
-      const assignedStatus = data.status; 
+      const assignedStatus = data.status;
       setCreatedPlayerId(data.booking_id);
 
       setBookingResult({
@@ -127,6 +118,8 @@ export default function OpenPlayPage() {
 
       setPaymentMode('select');
       setSelectedSession(null);
+      setName("");
+      setPhone("");
       setPlayerNotes("");
 
       fetchData();
@@ -140,12 +133,10 @@ export default function OpenPlayPage() {
   const updatePaymentMethod = async (method: 'online' | 'onsite') => {
     setPaymentMode(method);
     if (createdPlayerId) {
-      await supabase.rpc("update_my_payment_method", {
-        p_table_name: "open_play_players",
-        p_booking_ids: [String(createdPlayerId)],
-        p_phone: phone.trim(),
-        p_payment_method: method
-      });
+      await supabase
+        .from("open_play_players")
+        .update({ payment_method: method })
+        .eq("id", createdPlayerId);
       fetchData();
     }
   };
@@ -172,12 +163,12 @@ export default function OpenPlayPage() {
   const activeSessions = sessions.filter(session => !isSessionExpired(session.session_date, session.start_time));
 
   return (
-    <main className="min-h-screen max-w-md mx-auto bg-gray-50 flex flex-col pb-10 relative">
-      <header className="text-white p-4 flex items-center shadow-md relative z-10" style={{ backgroundColor: "#2563eb" }}>
-        <Link href="/" className="mr-4 p-2 rounded-full transition" style={{ backgroundColor: "rgba(255,255,255,0.15)" }}>
+    <main className="min-h-screen max-w-md mx-auto bg-gray-50 flex flex-col pb-32 relative overflow-x-hidden">
+      <header className="text-white h-16 flex items-center justify-center shadow-md relative z-10 w-full" style={{ backgroundColor: "#2563eb" }}>
+        <Link href="/" className="absolute left-4 p-2 rounded-full transition z-20" style={{ backgroundColor: "rgba(255,255,255,0.15)" }}>
           <ArrowLeft size={24} />
         </Link>
-        <h1 className="text-xl font-bold">臨打預約</h1>
+        <h1 className="text-xl font-bold px-12 truncate">臨打預約</h1>
       </header>
 
       <div className="p-5 space-y-4">
@@ -190,7 +181,7 @@ export default function OpenPlayPage() {
             const regCount = session.open_play_players?.filter((p: any) => p.status === 'registered').length || 0;
             const waitCount = session.open_play_players?.filter((p: any) => p.status === 'waitlisted').length || 0;
             const isFull = regCount >= session.max_players && waitCount >= session.max_waitlist;
-            
+
             const activePlayers = session.open_play_players
               ?.filter((p: any) => p.status !== 'cancelled')
               .sort((a: any, b: any) => {
@@ -248,9 +239,8 @@ export default function OpenPlayPage() {
                         <div key={player.id} className="flex flex-col text-sm">
                           <div className="flex items-center gap-2">
                             <span
-                              className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${
-                                player.status === 'registered' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'
-                              }`}
+                              className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${player.status === 'registered' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'
+                                }`}
                             >
                               {player.status === 'registered' ? '正取' : '候補'}
                             </span>
