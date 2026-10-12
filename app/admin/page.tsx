@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { supabase } from "../../lib/supabase";
 import Link from "next/link";
 import {
@@ -26,6 +26,7 @@ import {
   Eye,
   MousePointerClick,
   CalendarPlus,
+  Users
 } from "lucide-react";
 
 export default function AdminPage() {
@@ -79,7 +80,7 @@ export default function AdminPage() {
   const [editingClassId, setEditingClassId] = useState<string | null>(null);
   const [editingOpenPlayId, setEditingOpenPlayId] = useState<string | null>(null);
 
-  // 🌟 臨打視覺化快選 State
+  // 臨打視覺化快選 State
   const [showVisualSchedule, setShowVisualSchedule] = useState(false);
   const [visualDate, setVisualDate] = useState(() => {
     const tmrw = new Date();
@@ -88,7 +89,7 @@ export default function AdminPage() {
   });
   const [selectedGrid, setSelectedGrid] = useState<string[]>([]);
 
-  // 🌟 課程視覺化快選 State
+  // 課程視覺化快選 State
   const [showClassVisualSchedule, setShowClassVisualSchedule] = useState(false);
   const [classVisualDate, setClassVisualDate] = useState(() => {
     const tmrw = new Date();
@@ -105,8 +106,8 @@ export default function AdminPage() {
   const [agentNotes, setAgentNotes] = useState("");
   const [isAgentSubmitting, setIsAgentSubmitting] = useState(false);
 
-  // 歷史查詢專用 State
-  const [historyType, setHistoryType] = useState<'open_plays' | 'classes' | 'courts'>('open_plays');
+  // 🌟 歷史查詢專用 State (加入 all 選項)
+  const [historyType, setHistoryType] = useState<'all' | 'courts' | 'open_plays' | 'classes'>('all');
   const [historyStartDate, setHistoryStartDate] = useState(() => {
     const d = new Date(); d.setDate(d.getDate() - 30); return d.toISOString().split("T")[0];
   });
@@ -172,7 +173,6 @@ export default function AdminPage() {
 
       if (session || auth === "true") {
         setIsAuthenticated(true);
-        fetchAllData();
       } else {
         setLoading(false);
       }
@@ -180,67 +180,39 @@ export default function AdminPage() {
     init();
   }, []);
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
+  const getFetchLimitDateStr = useCallback(() => {
+    const now = new Date();
+    now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
 
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: inputUsername.trim(),
-      password: inputPassword.trim(),
-    });
-
-    if (error) {
-      alert("登入失敗，請確認您的 Email 與密碼是否正確：" + error.message);
-      setInputPassword("");
-      setLoading(false);
-      return;
+    if (activeTab === 'dashboard') {
+      if (dateFilter === 'today') {
+        return now.toISOString().split("T")[0];
+      } else if (dateFilter === 'week') {
+        const startOfWeek = new Date(now);
+        const day = startOfWeek.getDay();
+        const diff = startOfWeek.getDate() - day + (day === 0 ? -6 : 1);
+        startOfWeek.setDate(diff);
+        return startOfWeek.toISOString().split("T")[0];
+      } else if (dateFilter === 'month') {
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        startOfMonth.setMinutes(startOfMonth.getMinutes() - startOfMonth.getTimezoneOffset());
+        return startOfMonth.toISOString().split("T")[0];
+      } else if (dateFilter === 'custom') {
+        return customStartDate;
+      }
     }
 
-    sessionStorage.setItem("pickle_admin_auth", "true");
-    setIsAuthenticated(true);
-    fetchAllData();
-    setLoading(false);
-  };
+    const defaultLimit = new Date(now);
+    defaultLimit.setDate(defaultLimit.getDate() - 7);
+    return defaultLimit.toISOString().split("T")[0];
+  }, [activeTab, dateFilter, customStartDate]);
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    sessionStorage.removeItem("pickle_admin_auth");
-    setIsAuthenticated(false);
-  };
 
-  const handleSaveSettings = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const updates = [
-      { key: "venue_name", value: tempVenueName.trim(), updated_at: new Date().toISOString() },
-      { key: "admin_username", value: tempAdminUser.trim(), updated_at: new Date().toISOString() },
-      { key: "admin_password", value: tempAdminPass.trim(), updated_at: new Date().toISOString() },
-      { key: "line_url", value: tempLineUrl.trim(), updated_at: new Date().toISOString() },
-      { key: "announcement_active", value: tempAnnouncementActive ? "true" : "false", updated_at: new Date().toISOString() },
-      { key: "announcement_text", value: tempAnnouncementText.trim(), updated_at: new Date().toISOString() },
-      { key: "cancel_limit_hours", value: tempCancelLimitHours.trim(), updated_at: new Date().toISOString() },
-    ];
-
-    const { error } = await supabase.from("settings").upsert(updates);
-    if (error) alert("設定儲存失敗：" + error.message);
-    else {
-      setVenueName(tempVenueName.trim());
-      setAdminUser(tempAdminUser.trim());
-      setAdminPass(tempAdminPass.trim());
-      setLineUrl(tempLineUrl.trim());
-      setAnnouncementActive(tempAnnouncementActive);
-      setAnnouncementText(tempAnnouncementText.trim());
-      setCancelLimitHours(tempCancelLimitHours.trim());
-      alert("✅ 設定已成功同步至資料庫！");
-    }
-  };
-
-  const fetchAllData = async () => {
+  const fetchAllData = useCallback(async () => {
+    if (!isAuthenticated) return;
     setLoading(true);
 
-    // 🌟 核心防過載：設定 7 天前的日期門檻，避免資料庫爆量讀取過慢
-    const limitDate = new Date();
-    limitDate.setDate(limitDate.getDate() - 7);
-    const limitDateStr = limitDate.toISOString().split("T")[0];
+    const limitDateStr = getFetchLimitDateStr();
 
     const { data: courtsOptions } = await supabase.from("courts").select("*").order("name");
     if (courtsOptions) setCourtsList(courtsOptions);
@@ -251,7 +223,6 @@ export default function AdminPage() {
     const { data: specialsData } = await supabase.from("special_dates").select("*").order("date", { ascending: true });
     if (specialsData) setSpecialDates(specialsData);
 
-    // 1. 場地預約 (7天內)
     const { data: courtsData } = await supabase
       .from("court_bookings")
       .select(`*, users (name, phone), courts (name)`)
@@ -292,7 +263,6 @@ export default function AdminPage() {
       setCourtBookings(groupedCourts);
     }
 
-    // 2. 課程場次 (7天內)
     const { data: classesData } = await supabase
       .from("classes")
       .select(`*, courts (name), class_bookings (id, status, notes, need_paddle, payment_method, payment_status, is_checked_in, users (name, phone))`)
@@ -300,7 +270,6 @@ export default function AdminPage() {
       .order("class_date", { ascending: false });
     if (classesData) setClassesList(classesData);
 
-    // 3. 臨打場次 (7天內)
     const { data: openPlaysData } = await supabase
       .from("open_play_sessions")
       .select(`*, courts(name), open_play_players (id, status, created_at, player_notes, payment_method, payment_status, is_checked_in, users (name, phone))`)
@@ -309,29 +278,22 @@ export default function AdminPage() {
     if (openPlaysData) setOpenPlaySessions(openPlaysData);
 
     setLoading(false);
-  };
+  }, [getFetchLimitDateStr, isAuthenticated]);
 
+  useEffect(() => {
+    fetchAllData();
+  }, [activeTab, dateFilter, customStartDate, customEndDate, fetchAllData]);
+
+  // 🌟 修改歷史抓取邏輯：支援「全部」，並混合排序
   const fetchHistoryData = async () => {
     setIsFetchingHistory(true);
     setHistoryResults([]);
     try {
-      if (historyType === 'open_plays') {
-        const { data } = await supabase
-          .from("open_play_sessions")
-          .select(`*, courts(name), open_play_players (id, status, payment_status, users (name, phone))`)
-          .gte("session_date", historyStartDate)
-          .lte("session_date", historyEndDate)
-          .order("session_date", { ascending: false });
-        if (data) setHistoryResults(data);
-      } else if (historyType === 'classes') {
-        const { data } = await supabase
-          .from("classes")
-          .select(`*, courts(name), class_bookings (id, status, payment_status, users (name, phone))`)
-          .gte("class_date", historyStartDate)
-          .lte("class_date", historyEndDate)
-          .order("class_date", { ascending: false });
-        if (data) setHistoryResults(data);
-      } else if (historyType === 'courts') {
+      let fetchedCourts: any[] = [];
+      let fetchedClasses: any[] = [];
+      let fetchedOpenPlays: any[] = [];
+
+      if (historyType === 'all' || historyType === 'courts') {
         const { data } = await supabase
           .from("court_bookings")
           .select(`*, users (name, phone), courts (name)`)
@@ -360,9 +322,43 @@ export default function AdminPage() {
             }
           }
           if (currentGroup) groupedCourts.push(currentGroup);
-          setHistoryResults(groupedCourts);
+          fetchedCourts = groupedCourts.map(item => ({ ...item, _itemType: 'courts', sortDate: item.booking_date, sortTime: item.start_time }));
         }
       }
+
+      if (historyType === 'all' || historyType === 'open_plays') {
+        const { data } = await supabase
+          .from("open_play_sessions")
+          .select(`*, courts(name), open_play_players (id, status, payment_status, payment_method, users (name, phone))`)
+          .gte("session_date", historyStartDate)
+          .lte("session_date", historyEndDate);
+        if (data) {
+          fetchedOpenPlays = data.map(item => ({ ...item, _itemType: 'open_plays', sortDate: item.session_date, sortTime: item.start_time }));
+        }
+      }
+
+      if (historyType === 'all' || historyType === 'classes') {
+        const { data } = await supabase
+          .from("classes")
+          .select(`*, courts(name), class_bookings (id, status, payment_status, payment_method, users (name, phone))`)
+          .gte("class_date", historyStartDate)
+          .lte("class_date", historyEndDate);
+        if (data) {
+          fetchedClasses = data.map(item => ({ ...item, _itemType: 'classes', sortDate: item.class_date, sortTime: item.start_time }));
+        }
+      }
+
+      const combined = [...fetchedCourts, ...fetchedClasses, ...fetchedOpenPlays];
+
+      // 依日期與時間排序 (由新到舊)
+      combined.sort((a, b) => {
+        const dateA = a.sortDate + ' ' + a.sortTime;
+        const dateB = b.sortDate + ' ' + b.sortTime;
+        return dateA > dateB ? -1 : 1;
+      });
+
+      setHistoryResults(combined);
+
     } catch (err) {
       console.error(err);
     } finally {
@@ -470,10 +466,13 @@ export default function AdminPage() {
   };
 
   const todayCheckInList = useMemo(() => {
-    const today = new Date().toISOString().split("T")[0];
+    const today = new Date();
+    today.setMinutes(today.getMinutes() - today.getTimezoneOffset());
+    const todayStr = today.toISOString().split("T")[0];
+
     const list: any[] = [];
     openPlaySessions.forEach((session) => {
-      if (session.session_date === today) {
+      if (session.session_date === todayStr) {
         session.open_play_players?.forEach((p: any) => {
           if (p.status === "registered") {
             list.push({ id: p.id, tableName: "open_play_players", type: "臨打", title: session.title, time: `${session.start_time?.slice(0, 5)} - ${session.end_time?.slice(0, 5)}`, name: p.users?.name || "未填寫", phone: p.users?.phone || "", price: session.price || 0, paymentStatus: p.payment_status, paymentMethod: p.payment_method, isCheckedIn: !!p.is_checked_in, notes: p.player_notes });
@@ -482,7 +481,7 @@ export default function AdminPage() {
       }
     });
     classesList.forEach((cls) => {
-      if (cls.class_date === today) {
+      if (cls.class_date === todayStr) {
         cls.class_bookings?.forEach((b: any) => {
           if (b.status !== "cancelled") {
             list.push({ id: b.id, tableName: "class_bookings", type: "課程", title: cls.title, time: `${cls.start_time?.slice(0, 5)} - ${cls.end_time?.slice(0, 5)}`, name: b.users?.name || "未填寫", phone: b.users?.phone || "", price: cls.price || 0, paymentStatus: b.payment_status, paymentMethod: b.payment_method, isCheckedIn: !!b.is_checked_in, notes: b.need_paddle ? "🏓 需租借球拍" : b.notes });
@@ -491,7 +490,7 @@ export default function AdminPage() {
       }
     });
     courtBookings.forEach((b) => {
-      if (b.booking_date === today && b.status === "booked") {
+      if (b.booking_date === todayStr && b.status === "booked") {
         list.push({ id: b.ids[0], ids: b.ids, tableName: "court_bookings", type: "場地", title: b.courts?.name || "球場", time: `${b.start_time?.slice(0, 5)} - ${b.end_time?.slice(0, 5)}`, name: b.users?.name || "未填寫", phone: b.users?.phone || "", price: b.totalPrice || 250, paymentStatus: b.payment_status, paymentMethod: b.payment_method, isCheckedIn: !!b.is_checked_in, notes: `${b.ids.length * 0.5}h` });
       }
     });
@@ -511,24 +510,47 @@ export default function AdminPage() {
 
   const isInDateRange = (dateStr: string) => {
     if (!dateStr) return false;
-    const todayStr = new Date().toISOString().split("T")[0];
+
     const now = new Date();
+    now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+    const todayStr = now.toISOString().split("T")[0];
+
     if (dateFilter === 'today') return dateStr === todayStr;
+
     const targetDate = new Date(dateStr);
+
     if (dateFilter === 'week') {
-      const diffTime = targetDate.getTime() - now.getTime();
-      const diffDays = diffTime / (1000 * 60 * 60 * 24);
-      return diffDays >= 0 && diffDays <= 7;
+      const startOfWeek = new Date(now);
+      const day = startOfWeek.getDay();
+      const diff = startOfWeek.getDate() - day + (day === 0 ? -6 : 1);
+      startOfWeek.setDate(diff);
+      const startOfWeekStr = startOfWeek.toISOString().split("T")[0];
+
+      const endOfWeek = new Date(startOfWeek);
+      endOfWeek.setDate(endOfWeek.getDate() + 6);
+      const endOfWeekStr = endOfWeek.toISOString().split("T")[0];
+
+      return dateStr >= startOfWeekStr && dateStr <= endOfWeekStr;
     }
-    if (dateFilter === 'month') return targetDate.getMonth() === now.getMonth() && targetDate.getFullYear() === now.getFullYear();
-    if (dateFilter === 'custom') return dateStr >= customStartDate && dateStr <= customEndDate;
+
+    if (dateFilter === 'month') {
+      const targetMonth = targetDate.toISOString().slice(0, 7);
+      const currentMonth = now.toISOString().slice(0, 7);
+      return targetMonth === currentMonth;
+    }
+
+    if (dateFilter === 'custom') {
+      if (!customStartDate || !customEndDate) return true;
+      return dateStr >= customStartDate && dateStr <= customEndDate;
+    }
+
     return true;
   };
 
   const calculateMetrics = () => {
     let totalEstimated = 0; let totalCollected = 0; let totalPending = 0;
-    let courtRev = 0; let classRev = 0; let openPlayRev = 0;
-    let courtPendingCount = 0; let classPendingCount = 0; let openPlayPendingCount = 0;
+    let courtRev = 0; let openPlayRev = 0; let classRev = 0;
+    let courtPendingCount = 0; let openPlayPendingCount = 0; let classPendingCount = 0;
 
     courtBookings.forEach((b) => {
       if (b.status === 'booked' && isInDateRange(b.booking_date)) {
@@ -536,19 +558,6 @@ export default function AdminPage() {
         totalEstimated += amt; courtRev += amt;
         if (b.payment_status === 'paid') totalCollected += amt;
         else { totalPending += amt; courtPendingCount += 1; }
-      }
-    });
-
-    classesList.forEach((cls) => {
-      if (isInDateRange(cls.class_date)) {
-        const price = cls.price || 0;
-        cls.class_bookings?.forEach((cb: any) => {
-          if (cb.status !== 'cancelled') {
-            totalEstimated += price; classRev += price;
-            if (cb.payment_status === 'paid') totalCollected += price;
-            else { totalPending += price; classPendingCount += 1; }
-          }
-        });
       }
     });
 
@@ -565,7 +574,20 @@ export default function AdminPage() {
       }
     });
 
-    return { totalEstimated, totalCollected, totalPending, courtRev, classRev, openPlayRev, courtPendingCount, classPendingCount, openPlayPendingCount };
+    classesList.forEach((cls) => {
+      if (isInDateRange(cls.class_date)) {
+        const price = cls.price || 0;
+        cls.class_bookings?.forEach((cb: any) => {
+          if (cb.status !== 'cancelled') {
+            totalEstimated += price; classRev += price;
+            if (cb.payment_status === 'paid') totalCollected += price;
+            else { totalPending += price; classPendingCount += 1; }
+          }
+        });
+      }
+    });
+
+    return { totalEstimated, totalCollected, totalPending, courtRev, openPlayRev, classRev, courtPendingCount, openPlayPendingCount, classPendingCount };
   };
 
   const metrics = calculateMetrics();
@@ -578,20 +600,20 @@ export default function AdminPage() {
         csvRows.push([b.booking_date, "場地租借", `${b.courts?.name} (${b.start_time?.slice(0, 5)}-${b.end_time?.slice(0, 5)})`, b.users?.name || '', b.users?.phone || '', b.payment_method === 'online' ? '線上付款' : '現場付款', b.totalPrice || 250, b.payment_status === 'paid' ? '已收款' : '待收款']);
       }
     });
-    classesList.forEach((cls) => {
-      if (isInDateRange(cls.class_date)) {
-        cls.class_bookings?.forEach((cb: any) => {
-          if (cb.status !== 'cancelled') {
-            csvRows.push([cls.class_date, "體驗課程", cls.title, cb.users?.name || '', cb.users?.phone || '', cb.payment_method === 'online' ? '線上付款' : '現場付款', cls.price || 0, cb.payment_status === 'paid' ? '已收款' : '待收款']);
-          }
-        });
-      }
-    });
     openPlaySessions.forEach((session) => {
       if (isInDateRange(session.session_date)) {
         session.open_play_players?.forEach((p: any) => {
           if (p.status === 'registered') {
             csvRows.push([session.session_date, "臨打活動", session.title, p.users?.name || '', p.users?.phone || '', p.payment_method === 'online' ? '線上付款' : '現場付款', session.price || 0, p.payment_status === 'paid' ? '已收款' : '待收款']);
+          }
+        });
+      }
+    });
+    classesList.forEach((cls) => {
+      if (isInDateRange(cls.class_date)) {
+        cls.class_bookings?.forEach((cb: any) => {
+          if (cb.status !== 'cancelled') {
+            csvRows.push([cls.class_date, "體驗課程", cls.title, cb.users?.name || '', cb.users?.phone || '', cb.payment_method === 'online' ? '線上付款' : '現場付款', cls.price || 0, cb.payment_status === 'paid' ? '已收款' : '待收款']);
           }
         });
       }
@@ -602,6 +624,67 @@ export default function AdminPage() {
     const link = document.createElement("a");
     link.setAttribute("href", url);
     link.setAttribute("download", `revenue_report_${dateFilter === 'custom' ? `${customStartDate}_to_${customEndDate}` : dateFilter}.csv`);
+    document.body.appendChild(link); link.click(); document.body.removeChild(link);
+  };
+
+  // 🌟 新增歷史區間專用的報表匯出功能
+  const handleExportHistoryCSV = () => {
+    if (historyResults.length === 0) return alert("目前沒有資料可供匯出！");
+
+    const csvRows = [];
+    csvRows.push(["日期", "類別", "項目名稱", "姓名", "電話", "付款方式", "金額", "收款狀態"]);
+
+    historyResults.forEach((item) => {
+      if (item._itemType === 'courts') {
+        csvRows.push([
+          item.sortDate,
+          "場地租借",
+          `${item.courts?.name} (${item.start_time?.slice(0, 5)}-${item.end_time?.slice(0, 5)})`,
+          item.users?.name || '',
+          item.users?.phone || '',
+          item.payment_method === 'online' ? '線上付款' : '現場付款',
+          item.totalPrice || 250,
+          item.payment_status === 'paid' ? '已收款' : '待收款'
+        ]);
+      } else if (item._itemType === 'classes') {
+        item.class_bookings?.forEach((cb: any) => {
+          if (cb.status !== 'cancelled') {
+            csvRows.push([
+              item.sortDate,
+              "體驗課程",
+              item.title,
+              cb.users?.name || '',
+              cb.users?.phone || '',
+              cb.payment_method === 'online' ? '線上付款' : '現場付款',
+              item.price || 0,
+              cb.payment_status === 'paid' ? '已收款' : '待收款'
+            ]);
+          }
+        });
+      } else if (item._itemType === 'open_plays') {
+        item.open_play_players?.forEach((p: any) => {
+          if (p.status === 'registered') {
+            csvRows.push([
+              item.sortDate,
+              "臨打活動",
+              item.title,
+              p.users?.name || '',
+              p.users?.phone || '',
+              p.payment_method === 'online' ? '線上付款' : '現場付款',
+              item.price || 0,
+              p.payment_status === 'paid' ? '已收款' : '待收款'
+            ]);
+          }
+        });
+      }
+    });
+
+    const csvContent = "\uFEFF" + csvRows.map((e) => e.map((val) => `"${val}"`).join(",")).join("\n");
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `history_report_${historyStartDate}_to_${historyEndDate}.csv`);
     document.body.appendChild(link); link.click(); document.body.removeChild(link);
   };
 
@@ -850,7 +933,10 @@ export default function AdminPage() {
         </div>
 
         {loading ? (
-          <p className="text-center mt-10 font-bold animate-pulse text-gray-500">調閱資料中...</p>
+          <div className="flex flex-col items-center justify-center py-20">
+            <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-gray-800 mb-4"></div>
+            <p className="text-gray-500 font-bold">調閱資料中...</p>
+          </div>
         ) : (
           <>
             {/* 歷史紀錄調閱分頁 */}
@@ -866,15 +952,25 @@ export default function AdminPage() {
                     <input type="date" value={historyEndDate} onChange={(e) => setHistoryEndDate(e.target.value)} className="flex-1 bg-gray-50 border p-2 rounded-lg text-xs" style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }} />
                   </div>
                   <div className="flex gap-2">
+                    {/* 🌟 調整下拉式選單順序：全部、場地、臨打、課程 */}
                     <select value={historyType} onChange={(e) => setHistoryType(e.target.value as any)} className="flex-1 bg-gray-50 border p-2 rounded-lg text-xs font-bold" style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}>
-                      <option value="open_plays">臨打活動</option>
-                      <option value="classes">體驗課程</option>
-                      <option value="courts">場地租借</option>
+                      <option value="all">全部</option>
+                      <option value="courts">🎾 場地租借</option>
+                      <option value="open_plays">👥 臨打活動</option>
+                      <option value="classes">🎓 體驗課程</option>
                     </select>
                     <button onClick={fetchHistoryData} disabled={isFetchingHistory} className="bg-gray-800 text-white px-4 py-2 rounded-lg text-xs font-bold disabled:opacity-50">
                       {isFetchingHistory ? '查詢中...' : '查詢'}
                     </button>
                   </div>
+
+                  {/* 🌟 新增歷史區間報表匯出按鈕 */}
+                  <button
+                    onClick={handleExportHistoryCSV}
+                    className="w-full flex items-center justify-center gap-2 bg-indigo-600 text-white font-bold py-3 rounded-xl shadow-sm hover:bg-indigo-700 transition active:scale-95 text-sm mt-3"
+                  >
+                    <Download size={16} /> 匯出歷史區間報表 (Google 試算表格式)
+                  </button>
                 </div>
 
                 <div className="space-y-3">
@@ -882,15 +978,22 @@ export default function AdminPage() {
                     <p className="text-center text-xs text-gray-400 py-5">無符合條件的歷史紀錄</p>
                   ) : (
                     historyResults.map((item) => {
-                      if (historyType === 'open_plays' || historyType === 'classes') {
-                        const isClass = historyType === 'classes';
+                      // 渲染 課程 / 臨打
+                      if (item._itemType === 'open_plays' || item._itemType === 'classes') {
+                        const isClass = item._itemType === 'classes';
                         const dateField = isClass ? item.class_date : item.session_date;
                         const bookings = isClass ? item.class_bookings : item.open_play_players;
                         const activeCount = bookings?.filter((b: any) => b.status !== 'cancelled').length || 0;
                         return (
-                          <div key={item.id} className="bg-white p-3 rounded-xl border shadow-sm">
+                          <div key={item._itemType + item.id} className="bg-white p-3 rounded-xl border shadow-sm">
                             <div className="flex justify-between items-start border-b pb-2 mb-2">
                               <div>
+                                <div className="flex items-center gap-1.5 mb-1">
+                                  {/* 標示類型的彩色 Tag */}
+                                  <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${isClass ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>
+                                    {isClass ? '課程' : '臨打'}
+                                  </span>
+                                </div>
                                 <p className="text-sm font-bold text-gray-800">{item.title}</p>
                                 <p className="text-xs text-gray-500">{dateField} | {item.start_time?.slice(0, 5)}-{item.end_time?.slice(0, 5)}</p>
                               </div>
@@ -912,10 +1015,16 @@ export default function AdminPage() {
                           </div>
                         )
                       } else {
+                        // 渲染 場地
                         return (
-                          <div key={item.ids[0]} className="bg-white p-3 rounded-xl border shadow-sm">
+                          <div key={item._itemType + item.ids[0]} className="bg-white p-3 rounded-xl border shadow-sm">
                             <div className="flex justify-between items-start">
                               <div>
+                                <div className="flex items-center gap-1.5 mb-1">
+                                  <span className="text-[10px] px-1.5 py-0.5 rounded font-bold bg-emerald-100 text-emerald-700">
+                                    場地
+                                  </span>
+                                </div>
                                 <p className="text-sm font-bold text-gray-800">{item.courts?.name}</p>
                                 <p className="text-xs text-gray-500">{item.booking_date} | {item.start_time?.slice(0, 5)}-{item.end_time?.slice(0, 5)}</p>
                                 <p className="text-[11px] mt-1 font-bold text-gray-700">👤 {item.users?.name} ({item.users?.phone})</p>
@@ -1076,6 +1185,7 @@ export default function AdminPage() {
                   <Download size={16} /> 匯出當前報表 (Google 試算表格式)
                 </button>
 
+                {/* 🌟 調整順序：場地 -> 臨打 -> 課程 */}
                 <div className="bg-amber-50 border-2 border-amber-300 p-4 rounded-2xl shadow-sm space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-extrabold text-amber-800 flex items-center gap-1.5">
@@ -1095,22 +1205,22 @@ export default function AdminPage() {
                     </div>
 
                     <div
-                      onClick={() => setActiveTab('classes')}
-                      className="bg-white p-2.5 rounded-xl border border-amber-200 text-center cursor-pointer hover:bg-amber-100/50 transition"
-                    >
-                      <p className="text-[11px] text-gray-500 font-bold">體驗課程</p>
-                      <p className="text-base font-black text-amber-700 mt-0.5">
-                        {metrics.classPendingCount} <span className="text-xs font-normal">筆</span>
-                      </p>
-                    </div>
-
-                    <div
                       onClick={() => setActiveTab('open_plays')}
                       className="bg-white p-2.5 rounded-xl border border-amber-200 text-center cursor-pointer hover:bg-amber-100/50 transition"
                     >
                       <p className="text-[11px] text-gray-500 font-bold">臨打活動</p>
                       <p className="text-base font-black text-amber-700 mt-0.5">
                         {metrics.openPlayPendingCount} <span className="text-xs font-normal">筆</span>
+                      </p>
+                    </div>
+
+                    <div
+                      onClick={() => setActiveTab('classes')}
+                      className="bg-white p-2.5 rounded-xl border border-amber-200 text-center cursor-pointer hover:bg-amber-100/50 transition"
+                    >
+                      <p className="text-[11px] text-gray-500 font-bold">體驗課程</p>
+                      <p className="text-base font-black text-amber-700 mt-0.5">
+                        {metrics.classPendingCount} <span className="text-xs font-normal">筆</span>
                       </p>
                     </div>
                   </div>
@@ -1132,6 +1242,7 @@ export default function AdminPage() {
                   </div>
                 </div>
 
+                {/* 🌟 調整順序：場地 -> 臨打 -> 課程 */}
                 <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200 space-y-3">
                   <div className="space-y-3 text-sm">
                     <div className="flex justify-between items-center bg-emerald-50 p-3 rounded-xl border border-emerald-100">
@@ -1141,18 +1252,18 @@ export default function AdminPage() {
                       <span className="font-extrabold text-emerald-700">${metrics.courtRev}</span>
                     </div>
 
+                    <div className="flex justify-between items-center bg-blue-50 p-3 rounded-xl border border-blue-100">
+                      <span className="font-bold text-blue-900 flex items-center gap-1.5">
+                        <Users size={16} /> 臨打活動
+                      </span>
+                      <span className="font-extrabold text-blue-700">${metrics.openPlayRev}</span>
+                    </div>
+
                     <div className="flex justify-between items-center bg-orange-50 p-3 rounded-xl border border-orange-100">
                       <span className="font-bold text-orange-900 flex items-center gap-1.5">
                         <CreditCard size={16} /> 體驗課程
                       </span>
                       <span className="font-extrabold text-orange-700">${metrics.classRev}</span>
-                    </div>
-
-                    <div className="flex justify-between items-center bg-blue-50 p-3 rounded-xl border border-blue-100">
-                      <span className="font-bold text-blue-900 flex items-center gap-1.5">
-                        <DollarSign size={16} /> 臨打活動
-                      </span>
-                      <span className="font-extrabold text-blue-700">${metrics.openPlayRev}</span>
                     </div>
                   </div>
                 </div>
@@ -1267,7 +1378,7 @@ export default function AdminPage() {
               </div>
             )}
 
-            {/* 🎓 課程分頁 (已加入視覺化快選) */}
+            {/* 🎓 課程分頁 */}
             {activeTab === 'classes' && (
               <div className="space-y-4">
                 {showClassVisualSchedule ? (
@@ -1972,7 +2083,7 @@ export default function AdminPage() {
                 )}
 
                 {openPlaySessions.length === 0 ? (
-                  <p className="text-center text-gray-500 mt-10">無臨打場次</p>
+                  <p className="text-center text-gray-500 mt-10">無近期臨打場次</p>
                 ) : (
                   openPlaySessions.map((session) => {
                     const activePlayers = session.open_play_players?.filter((p: any) => p.status !== 'cancelled') || [];
@@ -2471,7 +2582,7 @@ export default function AdminPage() {
                       <input
                         type="time"
                         required
-                        className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2 text-xs"
+                        className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-xs"
                         style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
                         value={newRuleEnd}
                         onChange={(e) => setNewRuleEnd(e.target.value)}
