@@ -22,6 +22,7 @@ export default function OpenPlayPage() {
   const [lineUrl, setLineUrl] = useState("https://lin.ee/your_line_id");
 
   const fetchData = async () => {
+    // 1. 讀取官方 LINE 連結
     const { data: settingData } = await supabase
       .from("settings")
       .select("value")
@@ -31,9 +32,11 @@ export default function OpenPlayPage() {
       setLineUrl(settingData.value);
     }
 
+    // 2. 讀取球場清單（用來對應多場地名稱）
     const { data: courtsData } = await supabase.from("courts").select("id, name");
     if (courtsData) setCourtsList(courtsData);
 
+    // 3. 讀取臨打場次
     const { data } = await supabase
       .from("open_play_sessions")
       .select(`
@@ -53,19 +56,23 @@ export default function OpenPlayPage() {
     fetchData();
   }, []);
 
+  // 🌟 檢查場次是否已過期的共用函式
   const isSessionExpired = (sessionDate: string, startTime: string) => {
     if (!sessionDate || !startTime) return false;
     const now = new Date();
+
+    // 取得當前日期的字串 (YYYY-MM-DD)
     const todayStr = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().split("T")[0];
 
-    if (sessionDate < todayStr) return true;
+    if (sessionDate < todayStr) return true; // 日期已經過去
     if (sessionDate === todayStr) {
+      // 若是今天，比較時間 (HH:mm)
       const currentHours = now.getHours().toString().padStart(2, '0');
       const currentMins = now.getMinutes().toString().padStart(2, '0');
       const currentTimeStr = `${currentHours}:${currentMins}`;
 
       const sessionStartTime = startTime.slice(0, 5);
-      if (sessionStartTime <= currentTimeStr) return true;
+      if (sessionStartTime <= currentTimeStr) return true; // 開始時間已過或正在進行
     }
 
     return false;
@@ -163,12 +170,13 @@ export default function OpenPlayPage() {
   const activeSessions = sessions.filter(session => !isSessionExpired(session.session_date, session.start_time));
 
   return (
-    <main className="min-h-screen max-w-md mx-auto bg-gray-50 flex flex-col pb-32 relative overflow-x-hidden">
-      <header className="text-white h-16 flex items-center justify-center shadow-md relative z-10 w-full" style={{ backgroundColor: "#2563eb" }}>
-        <Link href="/" className="absolute left-4 p-2 rounded-full transition z-20" style={{ backgroundColor: "rgba(255,255,255,0.15)" }}>
-          <ArrowLeft size={24} />
+    <main className="w-full min-h-screen max-w-md mx-auto bg-gray-50 flex flex-col pb-10 relative">
+      {/* 🌟 修正：加入 shrink-0 防止下方內容變多時壓縮到標題高度 */}
+      <header className="shrink-0 w-full text-white py-4 px-4 flex items-center justify-center shadow-md relative z-10" style={{ backgroundColor: "#2563eb" }}>
+        <Link href="/" className="absolute left-4 p-2 rounded-full transition bg-white/15 hover:bg-white/25 active:scale-95">
+          <ArrowLeft size={22} />
         </Link>
-        <h1 className="text-xl font-bold px-12 truncate">臨打預約</h1>
+        <h1 className="text-lg font-bold tracking-wide">臨打預約</h1>
       </header>
 
       <div className="p-5 space-y-4">
