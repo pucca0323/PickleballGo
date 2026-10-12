@@ -79,6 +79,7 @@ export default function AdminPage() {
   const [editingClassId, setEditingClassId] = useState<string | null>(null);
   const [editingOpenPlayId, setEditingOpenPlayId] = useState<string | null>(null);
 
+  // 🌟 臨打視覺化快選 State
   const [showVisualSchedule, setShowVisualSchedule] = useState(false);
   const [visualDate, setVisualDate] = useState(() => {
     const tmrw = new Date();
@@ -86,6 +87,15 @@ export default function AdminPage() {
     return new Date(tmrw.getTime() - tmrw.getTimezoneOffset() * 60000).toISOString().split("T")[0];
   });
   const [selectedGrid, setSelectedGrid] = useState<string[]>([]);
+
+  // 🌟 課程視覺化快選 State
+  const [showClassVisualSchedule, setShowClassVisualSchedule] = useState(false);
+  const [classVisualDate, setClassVisualDate] = useState(() => {
+    const tmrw = new Date();
+    tmrw.setDate(tmrw.getDate() + 1);
+    return new Date(tmrw.getTime() - tmrw.getTimezoneOffset() * 60000).toISOString().split("T")[0];
+  });
+  const [classSelectedGrid, setClassSelectedGrid] = useState<string[]>([]);
 
   const [agentBookingSession, setAgentBookingSession] = useState<any | null>(null);
   const [agentName, setAgentName] = useState("");
@@ -227,6 +237,11 @@ export default function AdminPage() {
   const fetchAllData = async () => {
     setLoading(true);
 
+    // 🌟 核心防過載：設定 7 天前的日期門檻，避免資料庫爆量讀取過慢
+    const limitDate = new Date();
+    limitDate.setDate(limitDate.getDate() - 7);
+    const limitDateStr = limitDate.toISOString().split("T")[0];
+
     const { data: courtsOptions } = await supabase.from("courts").select("*").order("name");
     if (courtsOptions) setCourtsList(courtsOptions);
 
@@ -236,10 +251,11 @@ export default function AdminPage() {
     const { data: specialsData } = await supabase.from("special_dates").select("*").order("date", { ascending: true });
     if (specialsData) setSpecialDates(specialsData);
 
-    // 🌟 恢復完整抓取，讓過往與未來的場地、臨打、課程都能正常顯示
+    // 1. 場地預約 (7天內)
     const { data: courtsData } = await supabase
       .from("court_bookings")
       .select(`*, users (name, phone), courts (name)`)
+      .gte("booking_date", limitDateStr)
       .order("booking_date", { ascending: false })
       .order("court_id", { ascending: true })
       .order("user_id", { ascending: true })
@@ -276,15 +292,19 @@ export default function AdminPage() {
       setCourtBookings(groupedCourts);
     }
 
+    // 2. 課程場次 (7天內)
     const { data: classesData } = await supabase
       .from("classes")
       .select(`*, courts (name), class_bookings (id, status, notes, need_paddle, payment_method, payment_status, is_checked_in, users (name, phone))`)
+      .gte("class_date", limitDateStr)
       .order("class_date", { ascending: false });
     if (classesData) setClassesList(classesData);
 
+    // 3. 臨打場次 (7天內)
     const { data: openPlaysData } = await supabase
       .from("open_play_sessions")
       .select(`*, courts(name), open_play_players (id, status, created_at, player_notes, payment_method, payment_status, is_checked_in, users (name, phone))`)
+      .gte("session_date", limitDateStr)
       .order("session_date", { ascending: false });
     if (openPlaysData) setOpenPlaySessions(openPlaysData);
 
@@ -399,19 +419,23 @@ export default function AdminPage() {
     return slots;
   }, []);
 
-  const checkIsOccupied = (courtId: string, timeSlot: string) => {
+  const checkIsOccupied = (courtId: string, timeSlot: string, targetDate: string) => {
     const slotMins = timeToMins(timeSlot);
-    const cBooking = courtBookings.find(b => b.status === 'booked' && b.booking_date === visualDate && b.court_id === courtId && timeToMins(b.start_time) <= slotMins && timeToMins(b.end_time) > slotMins);
+    const cBooking = courtBookings.find(b => b.status === 'booked' && b.booking_date === targetDate && b.court_id === courtId && timeToMins(b.start_time) <= slotMins && timeToMins(b.end_time) > slotMins);
     if (cBooking) return { occupied: true, label: '私人預約' };
-    const classBooking = classesList.find(c => c.status !== 'cancelled' && c.class_date === visualDate && c.court_id === courtId && timeToMins(c.start_time) <= slotMins && timeToMins(c.end_time) > slotMins);
+    const classBooking = classesList.find(c => c.status !== 'cancelled' && c.class_date === targetDate && c.court_id === courtId && timeToMins(c.start_time) <= slotMins && timeToMins(c.end_time) > slotMins);
     if (classBooking) return { occupied: true, label: '課程' };
-    const opBooking = openPlaySessions.find(op => op.status !== 'cancelled' && op.session_date === visualDate && op.court_ids?.includes(courtId) && timeToMins(op.start_time) <= slotMins && timeToMins(op.end_time) > slotMins);
+    const opBooking = openPlaySessions.find(op => op.status !== 'cancelled' && op.session_date === targetDate && op.court_ids?.includes(courtId) && timeToMins(op.start_time) <= slotMins && timeToMins(op.end_time) > slotMins);
     if (opBooking) return { occupied: true, label: '臨打' };
     return { occupied: false, label: '' };
   };
 
   const toggleCellSelection = (cellKey: string) => {
     setSelectedGrid(prev => prev.includes(cellKey) ? prev.filter(k => k !== cellKey) : [...prev, cellKey]);
+  };
+
+  const toggleClassCellSelection = (cellKey: string) => {
+    setClassSelectedGrid(prev => prev.includes(cellKey) ? prev.filter(k => k !== cellKey) : [...prev, cellKey]);
   };
 
   const handleQuickConvertOpenPlay = () => {
@@ -429,6 +453,22 @@ export default function AdminPage() {
     setShowVisualSchedule(false); setIsAddingOpenPlay(true); setSelectedGrid([]); window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  const handleQuickConvertClass = () => {
+    if (classSelectedGrid.length === 0) return alert("請先點擊綠色格子選擇空檔！");
+    const courts = new Set<string>();
+    let minMins = 9999; let maxMins = 0;
+    classSelectedGrid.forEach(cell => {
+      const [cIdStr, timeStr] = cell.split('_');
+      courts.add(cIdStr);
+      const mins = timeToMins(timeStr);
+      if (mins < minMins) minMins = mins;
+      if (mins > maxMins) maxMins = mins;
+    });
+    const selectedCourtId = Array.from(courts)[0] || '';
+    setNewClass({ title: '新手體驗課', coach: '教練', class_date: classVisualDate, start_time: minsToTime(minMins), end_time: minsToTime(maxMins + 30), price: 800, max_players: 4, court_id: selectedCourtId, notes: '' });
+    setShowClassVisualSchedule(false); setIsAddingClass(true); setClassSelectedGrid([]); window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const todayCheckInList = useMemo(() => {
     const today = new Date().toISOString().split("T")[0];
     const list: any[] = [];
@@ -436,7 +476,7 @@ export default function AdminPage() {
       if (session.session_date === today) {
         session.open_play_players?.forEach((p: any) => {
           if (p.status === "registered") {
-            list.push({ id: p.id, tableName: "open_play_players", type: "臨打", title: session.title, time: `${session.start_time?.slice(0, 5)} -${session.end_time?.slice(0, 5)}`, name: p.users?.name || "未填寫", phone: p.users?.phone || "", price: session.price || 0, paymentStatus: p.payment_status, paymentMethod: p.payment_method, isCheckedIn: !!p.is_checked_in, notes: p.player_notes });
+            list.push({ id: p.id, tableName: "open_play_players", type: "臨打", title: session.title, time: `${session.start_time?.slice(0, 5)} - ${session.end_time?.slice(0, 5)}`, name: p.users?.name || "未填寫", phone: p.users?.phone || "", price: session.price || 0, paymentStatus: p.payment_status, paymentMethod: p.payment_method, isCheckedIn: !!p.is_checked_in, notes: p.player_notes });
           }
         });
       }
@@ -445,14 +485,14 @@ export default function AdminPage() {
       if (cls.class_date === today) {
         cls.class_bookings?.forEach((b: any) => {
           if (b.status !== "cancelled") {
-            list.push({ id: b.id, tableName: "class_bookings", type: "課程", title: cls.title, time: `${cls.start_time?.slice(0, 5)} -${cls.end_time?.slice(0, 5)}`, name: b.users?.name || "未填寫", phone: b.users?.phone || "", price: cls.price || 0, paymentStatus: b.payment_status, paymentMethod: b.payment_method, isCheckedIn: !!b.is_checked_in, notes: b.need_paddle ? "🏓 需租借球拍" : b.notes });
+            list.push({ id: b.id, tableName: "class_bookings", type: "課程", title: cls.title, time: `${cls.start_time?.slice(0, 5)} - ${cls.end_time?.slice(0, 5)}`, name: b.users?.name || "未填寫", phone: b.users?.phone || "", price: cls.price || 0, paymentStatus: b.payment_status, paymentMethod: b.payment_method, isCheckedIn: !!b.is_checked_in, notes: b.need_paddle ? "🏓 需租借球拍" : b.notes });
           }
         });
       }
     });
     courtBookings.forEach((b) => {
       if (b.booking_date === today && b.status === "booked") {
-        list.push({ id: b.ids[0], ids: b.ids, tableName: "court_bookings", type: "場地", title: b.courts?.name || "球場", time: `${b.start_time?.slice(0, 5)} -${b.end_time?.slice(0, 5)}`, name: b.users?.name || "未填寫", phone: b.users?.phone || "", price: b.totalPrice || 250, paymentStatus: b.payment_status, paymentMethod: b.payment_method, isCheckedIn: !!b.is_checked_in, notes: `${b.ids.length * 0.5}h` });
+        list.push({ id: b.ids[0], ids: b.ids, tableName: "court_bookings", type: "場地", title: b.courts?.name || "球場", time: `${b.start_time?.slice(0, 5)} - ${b.end_time?.slice(0, 5)}`, name: b.users?.name || "未填寫", phone: b.users?.phone || "", price: b.totalPrice || 250, paymentStatus: b.payment_status, paymentMethod: b.payment_method, isCheckedIn: !!b.is_checked_in, notes: `${b.ids.length * 0.5}h` });
       }
     });
     if (!checkInKeyword.trim()) return list;
@@ -798,7 +838,7 @@ export default function AdminPage() {
       </header>
 
       <div className="p-5 space-y-4">
-        {/* 🌟 依照您的要求調整排序：第一排 營收、歷史、設定；第二排 場地、臨打、課程 (不使用左右滑動，改為兩排固定網格) */}
+        {/* 排序：第一排 營收、歷史、設定；第二排 場地、臨打、課程 */}
         <div className="grid grid-cols-3 gap-1.5 bg-gray-200 p-1.5 rounded-xl">
           <button onClick={() => setActiveTab('dashboard')} className={`py-2 text-xs font-bold rounded-lg transition-all ${activeTab === 'dashboard' ? 'shadow-sm bg-white text-gray-900' : 'opacity-60 text-gray-600'}`}>📊 營收</button>
           <button onClick={() => setActiveTab('history')} className={`py-2 text-xs font-bold rounded-lg transition-all ${activeTab === 'history' ? 'shadow-sm bg-white text-indigo-600' : 'opacity-60 text-gray-600'}`}>📜 歷史</button>
@@ -1153,7 +1193,7 @@ export default function AdminPage() {
 
                 <div className="space-y-3">
                   {courtBookings.length === 0 ? (
-                    <p className="text-center text-gray-500 mt-5 text-sm">無預約紀錄</p>
+                    <p className="text-center text-gray-500 mt-5 text-sm">無近期預約紀錄</p>
                   ) : (
                     courtBookings.map((b, index) => (
                       <div
@@ -1227,22 +1267,105 @@ export default function AdminPage() {
               </div>
             )}
 
+            {/* 🎓 課程分頁 (已加入視覺化快選) */}
             {activeTab === 'classes' && (
               <div className="space-y-4">
-                <button
-                  onClick={() => setIsAddingClass(!isAddingClass)}
-                  className="w-full py-3 bg-orange-100 text-orange-700 font-bold rounded-xl flex justify-center items-center gap-2 border border-orange-200"
-                >
-                  {isAddingClass ? (
-                    <>
-                      <X size={18} /> 取消新增
-                    </>
-                  ) : (
-                    <>
-                      <Plus size={18} /> 新增體驗課程
-                    </>
-                  )}
-                </button>
+                {showClassVisualSchedule ? (
+                  <div className="bg-white p-4 rounded-xl border border-orange-300 shadow-lg animate-in fade-in zoom-in-95">
+                    <div className="flex justify-between items-center mb-3 border-b pb-2">
+                      <h4 className="font-bold text-orange-800 flex items-center gap-1.5">
+                        <Eye size={18} /> 課程視覺化空檔快選
+                      </h4>
+                      <button onClick={() => { setShowClassVisualSchedule(false); setClassSelectedGrid([]); }} className="text-gray-400 hover:text-gray-600">
+                        <X size={20} />
+                      </button>
+                    </div>
+
+                    <div className="mb-4">
+                      <label className="text-xs text-gray-500 font-bold block mb-1">目標日期</label>
+                      <input
+                        type="date"
+                        value={classVisualDate}
+                        onChange={(e) => { setClassVisualDate(e.target.value); setClassSelectedGrid([]); }}
+                        className="w-full bg-gray-50 text-gray-900 border border-gray-300 p-2 rounded-lg text-sm focus:outline-none"
+                      />
+                    </div>
+
+                    <p className="text-[11px] text-gray-500 mb-2 font-bold flex items-center gap-1">
+                      <MousePointerClick size={12} /> 點擊綠色格子選擇開課空檔 (可跨時間與場地)
+                    </p>
+
+                    <div className="overflow-x-auto max-h-[400px] border border-gray-200 rounded-lg">
+                      <table className="w-full text-xs text-center border-collapse">
+                        <thead className="sticky top-0 z-20 shadow-sm">
+                          <tr>
+                            <th className="border-b p-2 bg-gray-100 text-gray-600 font-bold sticky left-0 z-30 w-16">時間</th>
+                            {courtsList.map(c => (
+                              <th key={c.id} className="border-b border-l p-2 bg-gray-100 text-gray-700 font-bold min-w-[80px]">
+                                {c.name}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {timeSlots.map(time => (
+                            <tr key={time}>
+                              <td className="border-b p-1.5 bg-gray-50 sticky left-0 z-10 font-bold text-gray-500">{time}</td>
+                              {courtsList.map(c => {
+                                const status = checkIsOccupied(c.id, time, classVisualDate);
+                                const cellKey = `${c.id}_${time}`;
+                                const isSelected = classSelectedGrid.includes(cellKey);
+
+                                if (status.occupied) {
+                                  return (
+                                    <td key={c.id} className="border-b border-l p-1 bg-gray-200">
+                                      <span className="text-[10px] text-gray-500 font-bold block">{status.label}</span>
+                                    </td>
+                                  );
+                                }
+                                return (
+                                  <td
+                                    key={c.id}
+                                    onClick={() => toggleClassCellSelection(cellKey)}
+                                    className={`border-b border-l p-1 cursor-pointer transition select-none ${isSelected
+                                        ? 'bg-orange-500 text-white font-bold'
+                                        : 'bg-green-50 text-green-700 hover:bg-green-200 font-medium'
+                                      }`}
+                                  >
+                                    {isSelected ? '已選' : '空檔'}
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <button
+                      onClick={handleQuickConvertClass}
+                      className="w-full mt-4 bg-orange-600 hover:bg-orange-700 text-white font-bold py-3 rounded-xl shadow-md transition"
+                    >
+                      將選取的 {classSelectedGrid.length} 個時段轉為課程
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setIsAddingClass(!isAddingClass)}
+                      className="flex-1 py-3 bg-orange-100 text-orange-700 font-bold rounded-xl flex justify-center items-center gap-2 border border-orange-200 transition hover:bg-orange-200"
+                    >
+                      {isAddingClass ? <><X size={18} /> 取消新增</> : <><Plus size={18} /> 一般新增課程</>}
+                    </button>
+
+                    <button
+                      onClick={() => { setShowClassVisualSchedule(true); setIsAddingClass(false); }}
+                      className="flex-1 py-3 bg-amber-100 text-amber-800 font-bold rounded-xl flex justify-center items-center gap-2 border border-amber-200 transition hover:bg-amber-200"
+                    >
+                      <Eye size={18} /> 空檔視覺化快選
+                    </button>
+                  </div>
+                )}
 
                 {isAddingClass && (
                   <form
@@ -1362,7 +1485,7 @@ export default function AdminPage() {
                 )}
 
                 {classesList.length === 0 ? (
-                  <p className="text-center text-gray-500 mt-10">無課程場次</p>
+                  <p className="text-center text-gray-500 mt-10">無近期課程場次</p>
                 ) : (
                   classesList.map((cls) => {
                     const activeBookings = cls.class_bookings?.filter((b: any) => b.status !== 'cancelled') || [];
@@ -1645,7 +1768,7 @@ export default function AdminPage() {
                             <tr key={time}>
                               <td className="border-b p-1.5 bg-gray-50 sticky left-0 z-10 font-bold text-gray-500">{time}</td>
                               {courtsList.map(c => {
-                                const status = checkIsOccupied(c.id, time);
+                                const status = checkIsOccupied(c.id, time, visualDate);
                                 const cellKey = `${c.id}_${time}`;
                                 const isSelected = selectedGrid.includes(cellKey);
 
@@ -2450,7 +2573,7 @@ export default function AdminPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="text-xs font-bold text-gray-600 mb-1`">收款狀態</label>
+                  <label className="text-xs font-bold text-gray-600 mb-1 block">收款狀態</label>
                   <select
                     className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2 text-sm"
                     style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
