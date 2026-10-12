@@ -34,7 +34,7 @@ export default function AdminPage() {
   const [inputPassword, setInputPassword] = useState("");
   const [loading, setLoading] = useState(true);
 
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'courts' | 'classes' | 'open_plays' | 'settings'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'history' | 'settings' | 'courts' | 'open_plays' | 'classes'>('dashboard');
 
   const [courtsList, setCourtsList] = useState<any[]>([]);
   const [courtBookings, setCourtBookings] = useState<any[]>([]);
@@ -95,54 +95,29 @@ export default function AdminPage() {
   const [agentNotes, setAgentNotes] = useState("");
   const [isAgentSubmitting, setIsAgentSubmitting] = useState(false);
 
+  // 歷史查詢專用 State
+  const [historyType, setHistoryType] = useState<'open_plays' | 'classes' | 'courts'>('open_plays');
+  const [historyStartDate, setHistoryStartDate] = useState(() => {
+    const d = new Date(); d.setDate(d.getDate() - 30); return d.toISOString().split("T")[0];
+  });
+  const [historyEndDate, setHistoryEndDate] = useState(() => new Date().toISOString().split("T")[0]);
+  const [historyResults, setHistoryResults] = useState<any[]>([]);
+  const [isFetchingHistory, setIsFetchingHistory] = useState(false);
+
   const [newClass, setNewClass] = useState({
-    title: '',
-    coach: '',
-    class_date: '',
-    start_time: '14:00',
-    end_time: '16:00',
-    price: 800,
-    max_players: 4,
-    court_id: '',
-    notes: '',
+    title: '', coach: '', class_date: '', start_time: '14:00', end_time: '16:00', price: 800, max_players: 4, court_id: '', notes: '',
   });
 
   const [newOpenPlay, setNewOpenPlay] = useState({
-    title: '',
-    level: ['2.5'],
-    session_date: '',
-    start_time: '19:00',
-    end_time: '21:00',
-    price: 200,
-    max_players: 8,
-    max_waitlist: 2,
-    court_ids: [] as string[],
-    notes: '',
+    title: '', level: ['2.5'], session_date: '', start_time: '19:00', end_time: '21:00', price: 200, max_players: 8, max_waitlist: 2, court_ids: [] as string[], notes: '',
   });
 
   const [editClass, setEditClass] = useState({
-    title: '',
-    coach: '',
-    class_date: '',
-    start_time: '',
-    end_time: '',
-    price: 800,
-    max_players: 4,
-    court_id: '',
-    notes: '',
+    title: '', coach: '', class_date: '', start_time: '', end_time: '', price: 800, max_players: 4, court_id: '', notes: '',
   });
 
   const [editOpenPlay, setEditOpenPlay] = useState({
-    title: '',
-    level: [] as string[],
-    session_date: '',
-    start_time: '',
-    end_time: '',
-    price: 200,
-    max_players: 8,
-    max_waitlist: 2,
-    court_ids: [] as string[],
-    notes: '',
+    title: '', level: [] as string[], session_date: '', start_time: '', end_time: '', price: 200, max_players: 8, max_waitlist: 2, court_ids: [] as string[], notes: '',
   });
 
   const fetchSettings = async () => {
@@ -176,19 +151,15 @@ export default function AdminPage() {
       setTempAnnouncementActive(fetchedAnnounceActive);
       setTempAnnouncementText(fetchedAnnounceText);
       setTempCancelLimitHours(fetchedCancelLimit);
-      return { fetchedUser, fetchedPass };
     }
-    return { fetchedUser: adminUser, fetchedPass: adminPass };
   };
 
-  // 🌟 修改點 1：初始化時確認 Supabase Auth Session
   useEffect(() => {
     const init = async () => {
       await fetchSettings();
       const { data: { session } } = await supabase.auth.getSession();
       const auth = sessionStorage.getItem("pickle_admin_auth");
 
-      // 只要有 Supabase 登入憑證或 sessionStorage 記錄，就允許進入後台
       if (session || auth === "true") {
         setIsAuthenticated(true);
         fetchAllData();
@@ -199,7 +170,6 @@ export default function AdminPage() {
     init();
   }, []);
 
-  // 🌟 修改點 2：改用 Supabase 官方 Authentication 登入，解決 RLS 無法寫入問題
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -210,7 +180,7 @@ export default function AdminPage() {
     });
 
     if (error) {
-      alert("登入失敗，帳號或密碼錯誤：" + error.message);
+      alert("登入失敗，請確認您的 Email 與密碼是否正確：" + error.message);
       setInputPassword("");
       setLoading(false);
       return;
@@ -222,7 +192,6 @@ export default function AdminPage() {
     setLoading(false);
   };
 
-  // 🌟 修改點 3：確保登出時同時清除 Supabase Session
   const handleLogout = async () => {
     await supabase.auth.signOut();
     sessionStorage.removeItem("pickle_admin_auth");
@@ -231,7 +200,6 @@ export default function AdminPage() {
 
   const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
-
     const updates = [
       { key: "venue_name", value: tempVenueName.trim(), updated_at: new Date().toISOString() },
       { key: "admin_username", value: tempAdminUser.trim(), updated_at: new Date().toISOString() },
@@ -243,10 +211,8 @@ export default function AdminPage() {
     ];
 
     const { error } = await supabase.from("settings").upsert(updates);
-
-    if (error) {
-      alert("設定儲存失敗：" + error.message);
-    } else {
+    if (error) alert("設定儲存失敗：" + error.message);
+    else {
       setVenueName(tempVenueName.trim());
       setAdminUser(tempAdminUser.trim());
       setAdminPass(tempAdminPass.trim());
@@ -260,6 +226,7 @@ export default function AdminPage() {
 
   const fetchAllData = async () => {
     setLoading(true);
+
     const { data: courtsOptions } = await supabase.from("courts").select("*").order("name");
     if (courtsOptions) setCourtsList(courtsOptions);
 
@@ -269,6 +236,7 @@ export default function AdminPage() {
     const { data: specialsData } = await supabase.from("special_dates").select("*").order("date", { ascending: true });
     if (specialsData) setSpecialDates(specialsData);
 
+    // 🌟 恢復完整抓取，讓過往與未來的場地、臨打、課程都能正常顯示
     const { data: courtsData } = await supabase
       .from("court_bookings")
       .select(`*, users (name, phone), courts (name)`)
@@ -310,11 +278,7 @@ export default function AdminPage() {
 
     const { data: classesData } = await supabase
       .from("classes")
-      .select(`
-        *,
-        courts (name),
-        class_bookings (id, status, notes, need_paddle, payment_method, payment_status, is_checked_in, users (name, phone))
-      `)
+      .select(`*, courts (name), class_bookings (id, status, notes, need_paddle, payment_method, payment_status, is_checked_in, users (name, phone))`)
       .order("class_date", { ascending: false });
     if (classesData) setClassesList(classesData);
 
@@ -327,22 +291,71 @@ export default function AdminPage() {
     setLoading(false);
   };
 
+  const fetchHistoryData = async () => {
+    setIsFetchingHistory(true);
+    setHistoryResults([]);
+    try {
+      if (historyType === 'open_plays') {
+        const { data } = await supabase
+          .from("open_play_sessions")
+          .select(`*, courts(name), open_play_players (id, status, payment_status, users (name, phone))`)
+          .gte("session_date", historyStartDate)
+          .lte("session_date", historyEndDate)
+          .order("session_date", { ascending: false });
+        if (data) setHistoryResults(data);
+      } else if (historyType === 'classes') {
+        const { data } = await supabase
+          .from("classes")
+          .select(`*, courts(name), class_bookings (id, status, payment_status, users (name, phone))`)
+          .gte("class_date", historyStartDate)
+          .lte("class_date", historyEndDate)
+          .order("class_date", { ascending: false });
+        if (data) setHistoryResults(data);
+      } else if (historyType === 'courts') {
+        const { data } = await supabase
+          .from("court_bookings")
+          .select(`*, users (name, phone), courts (name)`)
+          .gte("booking_date", historyStartDate)
+          .lte("booking_date", historyEndDate)
+          .order("booking_date", { ascending: false })
+          .order("court_id", { ascending: true })
+          .order("start_time", { ascending: true });
+
+        if (data) {
+          const groupedCourts = [];
+          let currentGroup: any = null;
+          for (const b of data) {
+            if (!currentGroup) {
+              currentGroup = { ...b, ids: [b.id], totalPrice: b.price || 250 };
+            } else {
+              const isContiguous = currentGroup.booking_date === b.booking_date && currentGroup.court_id === b.court_id && currentGroup.user_id === b.user_id && currentGroup.status === b.status && currentGroup.end_time === b.start_time;
+              if (isContiguous) {
+                currentGroup.end_time = b.end_time;
+                currentGroup.ids.push(b.id);
+                currentGroup.totalPrice += b.price || 250;
+              } else {
+                groupedCourts.push(currentGroup);
+                currentGroup = { ...b, ids: [b.id], totalPrice: b.price || 250 };
+              }
+            }
+          }
+          if (currentGroup) groupedCourts.push(currentGroup);
+          setHistoryResults(groupedCourts);
+        }
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsFetchingHistory(false);
+    }
+  };
+
   const handleAddSpecialDate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newSpecialDate) return alert("請選擇日期！");
-
-    const { error } = await supabase.from("special_dates").insert([
-      { date: newSpecialDate, description: newSpecialDesc.trim() || '國定假日' }
-    ]);
-
-    if (error) {
-      alert("新增失敗 (可能該日期已存在)：" + error.message);
-    } else {
-      setNewSpecialDate("");
-      setNewSpecialDesc("");
-      alert("✅ 國定假日新增成功！");
-      fetchAllData();
-    }
+    const { error } = await supabase.from("special_dates").insert([{ date: newSpecialDate, description: newSpecialDesc.trim() || '國定假日' }]);
+    if (error) alert("新增失敗：" + error.message);
+    else { setNewSpecialDate(""); setNewSpecialDesc(""); alert("✅ 國定假日新增成功！"); fetchAllData(); }
   };
 
   const handleDeleteSpecialDate = async (dateStr: string) => {
@@ -354,16 +367,9 @@ export default function AdminPage() {
 
   const handleAddPricingRule = async (e: React.FormEvent) => {
     e.preventDefault();
-    const { error } = await supabase.from("pricing_rules").insert([
-      { day_type: newRuleDayType, start_time: newRuleStart, end_time: newRuleEnd, price: Number(newRulePrice) }
-    ]);
-
-    if (error) {
-      alert("新增費率失敗：" + error.message);
-    } else {
-      alert("✅ 費率規則新增成功！");
-      fetchAllData();
-    }
+    const { error } = await supabase.from("pricing_rules").insert([{ day_type: newRuleDayType, start_time: newRuleStart, end_time: newRuleEnd, price: Number(newRulePrice) }]);
+    if (error) alert("新增費率失敗：" + error.message);
+    else { alert("✅ 費率規則新增成功！"); fetchAllData(); }
   };
 
   const handleDeletePricingRule = async (ruleId: string) => {
@@ -395,50 +401,23 @@ export default function AdminPage() {
 
   const checkIsOccupied = (courtId: string, timeSlot: string) => {
     const slotMins = timeToMins(timeSlot);
-
-    const cBooking = courtBookings.find(b =>
-      b.status === 'booked' &&
-      b.booking_date === visualDate &&
-      b.court_id === courtId &&
-      timeToMins(b.start_time) <= slotMins &&
-      timeToMins(b.end_time) > slotMins
-    );
+    const cBooking = courtBookings.find(b => b.status === 'booked' && b.booking_date === visualDate && b.court_id === courtId && timeToMins(b.start_time) <= slotMins && timeToMins(b.end_time) > slotMins);
     if (cBooking) return { occupied: true, label: '私人預約' };
-
-    const classBooking = classesList.find(c =>
-      c.status !== 'cancelled' &&
-      c.class_date === visualDate &&
-      c.court_id === courtId &&
-      timeToMins(c.start_time) <= slotMins &&
-      timeToMins(c.end_time) > slotMins
-    );
+    const classBooking = classesList.find(c => c.status !== 'cancelled' && c.class_date === visualDate && c.court_id === courtId && timeToMins(c.start_time) <= slotMins && timeToMins(c.end_time) > slotMins);
     if (classBooking) return { occupied: true, label: '課程' };
-
-    const opBooking = openPlaySessions.find(op =>
-      op.status !== 'cancelled' &&
-      op.session_date === visualDate &&
-      op.court_ids?.includes(courtId) &&
-      timeToMins(op.start_time) <= slotMins &&
-      timeToMins(op.end_time) > slotMins
-    );
+    const opBooking = openPlaySessions.find(op => op.status !== 'cancelled' && op.session_date === visualDate && op.court_ids?.includes(courtId) && timeToMins(op.start_time) <= slotMins && timeToMins(op.end_time) > slotMins);
     if (opBooking) return { occupied: true, label: '臨打' };
-
     return { occupied: false, label: '' };
   };
 
   const toggleCellSelection = (cellKey: string) => {
-    setSelectedGrid(prev =>
-      prev.includes(cellKey) ? prev.filter(k => k !== cellKey) : [...prev, cellKey]
-    );
+    setSelectedGrid(prev => prev.includes(cellKey) ? prev.filter(k => k !== cellKey) : [...prev, cellKey]);
   };
 
   const handleQuickConvertOpenPlay = () => {
     if (selectedGrid.length === 0) return alert("請先點擊綠色格子選擇空檔！");
-
     const courts = new Set<string>();
-    let minMins = 9999;
-    let maxMins = 0;
-
+    let minMins = 9999; let maxMins = 0;
     selectedGrid.forEach(cell => {
       const [cIdStr, timeStr] = cell.split('_');
       courts.add(cIdStr);
@@ -446,169 +425,77 @@ export default function AdminPage() {
       if (mins < minMins) minMins = mins;
       if (mins > maxMins) maxMins = mins;
     });
-
-    const startTime = minsToTime(minMins);
-    const endTime = minsToTime(maxMins + 30);
-
-    setNewOpenPlay({
-      title: '歡樂臨打團',
-      level: ['2.5'],
-      session_date: visualDate,
-      start_time: startTime,
-      end_time: endTime,
-      price: 200,
-      max_players: courts.size * 6,
-      max_waitlist: 2,
-      court_ids: Array.from(courts),
-      notes: '',
-    });
-
-    setShowVisualSchedule(false);
-    setIsAddingOpenPlay(true);
-    setSelectedGrid([]);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    setNewOpenPlay({ title: '歡樂臨打團', level: ['2.5'], session_date: visualDate, start_time: minsToTime(minMins), end_time: minsToTime(maxMins + 30), price: 200, max_players: courts.size * 6, max_waitlist: 2, court_ids: Array.from(courts), notes: '' });
+    setShowVisualSchedule(false); setIsAddingOpenPlay(true); setSelectedGrid([]); window.scrollTo({ top: 0, behavior: 'smooth' });
   };
-
 
   const todayCheckInList = useMemo(() => {
     const today = new Date().toISOString().split("T")[0];
     const list: any[] = [];
-
     openPlaySessions.forEach((session) => {
       if (session.session_date === today) {
         session.open_play_players?.forEach((p: any) => {
           if (p.status === "registered") {
-            list.push({
-              id: p.id,
-              tableName: "open_play_players",
-              type: "臨打",
-              title: session.title,
-              time: `${session.start_time?.slice(0, 5)} - ${session.end_time?.slice(0, 5)}`,
-              name: p.users?.name || "未填寫",
-              phone: p.users?.phone || "",
-              price: session.price || 0,
-              paymentStatus: p.payment_status,
-              paymentMethod: p.payment_method,
-              isCheckedIn: !!p.is_checked_in,
-              notes: p.player_notes,
-            });
+            list.push({ id: p.id, tableName: "open_play_players", type: "臨打", title: session.title, time: `${session.start_time?.slice(0, 5)} -${session.end_time?.slice(0, 5)}`, name: p.users?.name || "未填寫", phone: p.users?.phone || "", price: session.price || 0, paymentStatus: p.payment_status, paymentMethod: p.payment_method, isCheckedIn: !!p.is_checked_in, notes: p.player_notes });
           }
         });
       }
     });
-
     classesList.forEach((cls) => {
       if (cls.class_date === today) {
         cls.class_bookings?.forEach((b: any) => {
           if (b.status !== "cancelled") {
-            list.push({
-              id: b.id,
-              tableName: "class_bookings",
-              type: "課程",
-              title: cls.title,
-              time: `${cls.start_time?.slice(0, 5)} - ${cls.end_time?.slice(0, 5)}`,
-              name: b.users?.name || "未填寫",
-              phone: b.users?.phone || "",
-              price: cls.price || 0,
-              paymentStatus: b.payment_status,
-              paymentMethod: b.payment_method,
-              isCheckedIn: !!b.is_checked_in,
-              notes: b.need_paddle ? "🏓 需租借球拍" : b.notes,
-            });
+            list.push({ id: b.id, tableName: "class_bookings", type: "課程", title: cls.title, time: `${cls.start_time?.slice(0, 5)} -${cls.end_time?.slice(0, 5)}`, name: b.users?.name || "未填寫", phone: b.users?.phone || "", price: cls.price || 0, paymentStatus: b.payment_status, paymentMethod: b.payment_method, isCheckedIn: !!b.is_checked_in, notes: b.need_paddle ? "🏓 需租借球拍" : b.notes });
           }
         });
       }
     });
-
     courtBookings.forEach((b) => {
       if (b.booking_date === today && b.status === "booked") {
-        list.push({
-          id: b.ids[0],
-          ids: b.ids,
-          tableName: "court_bookings",
-          type: "場地",
-          title: b.courts?.name || "球場",
-          time: `${b.start_time?.slice(0, 5)} - ${b.end_time?.slice(0, 5)}`,
-          name: b.users?.name || "未填寫",
-          phone: b.users?.phone || "",
-          price: b.totalPrice || 250,
-          paymentStatus: b.payment_status,
-          paymentMethod: b.payment_method,
-          isCheckedIn: !!b.is_checked_in,
-          notes: `${b.ids.length * 0.5}h`,
-        });
+        list.push({ id: b.ids[0], ids: b.ids, tableName: "court_bookings", type: "場地", title: b.courts?.name || "球場", time: `${b.start_time?.slice(0, 5)} -${b.end_time?.slice(0, 5)}`, name: b.users?.name || "未填寫", phone: b.users?.phone || "", price: b.totalPrice || 250, paymentStatus: b.payment_status, paymentMethod: b.payment_method, isCheckedIn: !!b.is_checked_in, notes: `${b.ids.length * 0.5}h` });
       }
     });
-
     if (!checkInKeyword.trim()) return list;
-
     const kw = checkInKeyword.trim().toLowerCase();
-    return list.filter(
-      (item) => item.name.toLowerCase().includes(kw) || item.phone.includes(kw)
-    );
+    return list.filter((item) => item.name.toLowerCase().includes(kw) || item.phone.includes(kw));
   }, [openPlaySessions, classesList, courtBookings, checkInKeyword]);
 
   const handleToggleCheckIn = async (tableName: string, id: string | number) => {
     try {
-      const { data, error } = await supabase.rpc("toggle_check_in", {
-        p_table_name: tableName,
-        p_booking_id: String(id),
-      });
-
+      const { data, error } = await supabase.rpc("toggle_check_in", { p_table_name: tableName, p_booking_id: String(id) });
       if (error) throw error;
       if (!data.success) throw new Error(data.message);
-
       fetchAllData();
-    } catch (err: any) {
-      alert("簽到狀態切換失敗：" + (err.message || "系統錯誤"));
-    }
+    } catch (err: any) { alert("簽到狀態切換失敗：" + (err.message || "系統錯誤")); }
   };
 
   const isInDateRange = (dateStr: string) => {
     if (!dateStr) return false;
     const todayStr = new Date().toISOString().split("T")[0];
     const now = new Date();
-
     if (dateFilter === 'today') return dateStr === todayStr;
-
     const targetDate = new Date(dateStr);
     if (dateFilter === 'week') {
       const diffTime = targetDate.getTime() - now.getTime();
       const diffDays = diffTime / (1000 * 60 * 60 * 24);
       return diffDays >= 0 && diffDays <= 7;
     }
-    if (dateFilter === 'month') {
-      return targetDate.getMonth() === now.getMonth() && targetDate.getFullYear() === now.getFullYear();
-    }
-    if (dateFilter === 'custom') {
-      return dateStr >= customStartDate && dateStr <= customEndDate;
-    }
+    if (dateFilter === 'month') return targetDate.getMonth() === now.getMonth() && targetDate.getFullYear() === now.getFullYear();
+    if (dateFilter === 'custom') return dateStr >= customStartDate && dateStr <= customEndDate;
     return true;
   };
 
   const calculateMetrics = () => {
-    let totalEstimated = 0;
-    let totalCollected = 0;
-    let totalPending = 0;
-    let courtRev = 0;
-    let classRev = 0;
-    let openPlayRev = 0;
-
-    let courtPendingCount = 0;
-    let classPendingCount = 0;
-    let openPlayPendingCount = 0;
+    let totalEstimated = 0; let totalCollected = 0; let totalPending = 0;
+    let courtRev = 0; let classRev = 0; let openPlayRev = 0;
+    let courtPendingCount = 0; let classPendingCount = 0; let openPlayPendingCount = 0;
 
     courtBookings.forEach((b) => {
       if (b.status === 'booked' && isInDateRange(b.booking_date)) {
         const amt = b.totalPrice || 0;
-        totalEstimated += amt;
-        courtRev += amt;
-        if (b.payment_status === 'paid') {
-          totalCollected += amt;
-        } else {
-          totalPending += amt;
-          courtPendingCount += 1;
-        }
+        totalEstimated += amt; courtRev += amt;
+        if (b.payment_status === 'paid') totalCollected += amt;
+        else { totalPending += amt; courtPendingCount += 1; }
       }
     });
 
@@ -617,14 +504,9 @@ export default function AdminPage() {
         const price = cls.price || 0;
         cls.class_bookings?.forEach((cb: any) => {
           if (cb.status !== 'cancelled') {
-            totalEstimated += price;
-            classRev += price;
-            if (cb.payment_status === 'paid') {
-              totalCollected += price;
-            } else {
-              totalPending += price;
-              classPendingCount += 1;
-            }
+            totalEstimated += price; classRev += price;
+            if (cb.payment_status === 'paid') totalCollected += price;
+            else { totalPending += price; classPendingCount += 1; }
           }
         });
       }
@@ -635,30 +517,15 @@ export default function AdminPage() {
         const price = session.price || 0;
         session.open_play_players?.forEach((p: any) => {
           if (p.status === 'registered') {
-            totalEstimated += price;
-            openPlayRev += price;
-            if (p.payment_status === 'paid') {
-              totalCollected += price;
-            } else {
-              totalPending += price;
-              openPlayPendingCount += 1;
-            }
+            totalEstimated += price; openPlayRev += price;
+            if (p.payment_status === 'paid') totalCollected += price;
+            else { totalPending += price; openPlayPendingCount += 1; }
           }
         });
       }
     });
 
-    return {
-      totalEstimated,
-      totalCollected,
-      totalPending,
-      courtRev,
-      classRev,
-      openPlayRev,
-      courtPendingCount,
-      classPendingCount,
-      openPlayPendingCount,
-    };
+    return { totalEstimated, totalCollected, totalPending, courtRev, classRev, openPlayRev, courtPendingCount, classPendingCount, openPlayPendingCount };
   };
 
   const metrics = calculateMetrics();
@@ -666,72 +533,36 @@ export default function AdminPage() {
   const handleExportCSV = () => {
     const csvRows = [];
     csvRows.push(["日期", "類別", "項目名稱", "姓名", "電話", "付款方式", "金額", "收款狀態"]);
-
     courtBookings.forEach((b) => {
       if (b.status === 'booked' && isInDateRange(b.booking_date)) {
-        csvRows.push([
-          b.booking_date,
-          "場地租借",
-          `${b.courts?.name} (${b.start_time?.slice(0, 5)}-${b.end_time?.slice(0, 5)})`,
-          b.users?.name || '',
-          b.users?.phone || '',
-          b.payment_method === 'online' ? '線上付款' : '現場付款',
-          b.totalPrice || 250,
-          b.payment_status === 'paid' ? '已收款' : '待收款',
-        ]);
+        csvRows.push([b.booking_date, "場地租借", `${b.courts?.name} (${b.start_time?.slice(0, 5)}-${b.end_time?.slice(0, 5)})`, b.users?.name || '', b.users?.phone || '', b.payment_method === 'online' ? '線上付款' : '現場付款', b.totalPrice || 250, b.payment_status === 'paid' ? '已收款' : '待收款']);
       }
     });
-
     classesList.forEach((cls) => {
       if (isInDateRange(cls.class_date)) {
         cls.class_bookings?.forEach((cb: any) => {
           if (cb.status !== 'cancelled') {
-            csvRows.push([
-              cls.class_date,
-              "體驗課程",
-              cls.title,
-              cb.users?.name || '',
-              cb.users?.phone || '',
-              cb.payment_method === 'online' ? '線上付款' : '現場付款',
-              cls.price || 0,
-              cb.payment_status === 'paid' ? '已收款' : '待收款',
-            ]);
+            csvRows.push([cls.class_date, "體驗課程", cls.title, cb.users?.name || '', cb.users?.phone || '', cb.payment_method === 'online' ? '線上付款' : '現場付款', cls.price || 0, cb.payment_status === 'paid' ? '已收款' : '待收款']);
           }
         });
       }
     });
-
     openPlaySessions.forEach((session) => {
       if (isInDateRange(session.session_date)) {
         session.open_play_players?.forEach((p: any) => {
           if (p.status === 'registered') {
-            csvRows.push([
-              session.session_date,
-              "臨打活動",
-              session.title,
-              p.users?.name || '',
-              p.users?.phone || '',
-              p.payment_method === 'online' ? '線上付款' : '現場付款',
-              session.price || 0,
-              p.payment_status === 'paid' ? '已收款' : '待收款',
-            ]);
+            csvRows.push([session.session_date, "臨打活動", session.title, p.users?.name || '', p.users?.phone || '', p.payment_method === 'online' ? '線上付款' : '現場付款', session.price || 0, p.payment_status === 'paid' ? '已收款' : '待收款']);
           }
         });
       }
     });
-
     const csvContent = "\uFEFF" + csvRows.map((e) => e.map((val) => `"${val}"`).join(",")).join("\n");
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.setAttribute("href", url);
-    link.setAttribute(
-      "download",
-      `revenue_report_${dateFilter === 'custom' ? `${customStartDate}_to_${customEndDate}` : dateFilter}.csv`
-    );
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    link.setAttribute("download", `revenue_report_${dateFilter === 'custom' ? `${customStartDate}_to_${customEndDate}` : dateFilter}.csv`);
+    document.body.appendChild(link); link.click(); document.body.removeChild(link);
   };
 
   const handleToggleCourtPayment = async (ids: string[], currentStatus: string) => {
@@ -761,9 +592,7 @@ export default function AdminPage() {
 
   const handleToggleCourtStatus = async (courtId: number, currentStatus: string) => {
     const nextStatus = currentStatus === 'active' ? 'maintenance' : 'active';
-    const msg = nextStatus === 'maintenance' ? '確定要將此場地設為「維修中」嗎？(前台將無法預約)' : '確定要重新開放此場地嗎？';
-    if (!confirm(msg)) return;
-
+    if (!confirm(nextStatus === 'maintenance' ? '確定要將此場地設為「維修中」嗎？(前台將無法預約)' : '確定要重新開放此場地嗎？')) return;
     await supabase.from("courts").update({ status: nextStatus }).eq("id", courtId);
     fetchAllData();
   };
@@ -774,17 +603,7 @@ export default function AdminPage() {
     await supabase.from("classes").insert([payload]);
     alert("🎉 課程新增成功！");
     setIsAddingClass(false);
-    setNewClass({
-      title: '',
-      coach: '',
-      class_date: '',
-      start_time: '14:00',
-      end_time: '16:00',
-      price: 800,
-      max_players: 4,
-      court_id: '',
-      notes: '',
-    });
+    setNewClass({ title: '', coach: '', class_date: '', start_time: '14:00', end_time: '16:00', price: 800, max_players: 4, court_id: '', notes: '' });
     fetchAllData();
   };
 
@@ -798,34 +617,13 @@ export default function AdminPage() {
   };
 
   const startEditingClass = (cls: any) => {
-    setEditClass({
-      title: cls.title,
-      coach: cls.coach,
-      class_date: cls.class_date,
-      start_time: cls.start_time,
-      end_time: cls.end_time,
-      price: cls.price,
-      max_players: cls.max_players,
-      court_id: cls.court_id || '',
-      notes: cls.notes || '',
-    });
+    setEditClass({ title: cls.title, coach: cls.coach, class_date: cls.class_date, start_time: cls.start_time, end_time: cls.end_time, price: cls.price, max_players: cls.max_players, court_id: cls.court_id || '', notes: cls.notes || '' });
     setEditingClassId(cls.id);
   };
 
   const handleDuplicateClass = (cls: any) => {
-    setNewClass({
-      title: cls.title,
-      coach: cls.coach,
-      class_date: '',
-      start_time: cls.start_time?.slice(0, 5) || '14:00',
-      end_time: cls.end_time?.slice(0, 5) || '16:00',
-      price: cls.price,
-      max_players: cls.max_players,
-      court_id: cls.court_id || '',
-      notes: cls.notes || '',
-    });
-    setIsAddingClass(true);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    setNewClass({ title: cls.title, coach: cls.coach, class_date: '', start_time: cls.start_time?.slice(0, 5) || '14:00', end_time: cls.end_time?.slice(0, 5) || '16:00', price: cls.price, max_players: cls.max_players, court_id: cls.court_id || '', notes: cls.notes || '' });
+    setIsAddingClass(true); window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleCancelClassBooking = async (bookingId: string) => {
@@ -848,43 +646,16 @@ export default function AdminPage() {
 
     try {
       const { data, error } = await supabase.rpc("create_open_play_session", {
-        p_title: newOpenPlay.title,
-        p_level: newOpenPlay.level.join(', '),
-        p_session_date: newOpenPlay.session_date,
-        p_start_time: newOpenPlay.start_time,
-        p_end_time: newOpenPlay.end_time,
-        p_price: newOpenPlay.price,
-        p_max_players: newOpenPlay.max_players,
-        p_max_waitlist: newOpenPlay.max_waitlist,
-        p_court_ids: newOpenPlay.court_ids,
-        p_notes: newOpenPlay.notes || null,
+        p_title: newOpenPlay.title, p_level: newOpenPlay.level.join(', '), p_session_date: newOpenPlay.session_date, p_start_time: newOpenPlay.start_time, p_end_time: newOpenPlay.end_time, p_price: newOpenPlay.price, p_max_players: newOpenPlay.max_players, p_max_waitlist: newOpenPlay.max_waitlist, p_court_ids: newOpenPlay.court_ids, p_notes: newOpenPlay.notes || null,
       });
-
       if (error) throw error;
-
-      if (!data.success) {
-        alert(`⚠️ ${data.message}`);
-        return;
-      }
+      if (!data.success) { alert(`⚠️ ${data.message}`); return; }
 
       alert("🎉 臨打場次新增成功！");
       setIsAddingOpenPlay(false);
-      setNewOpenPlay({
-        title: '',
-        level: ['2.5'],
-        session_date: '',
-        start_time: '19:00',
-        end_time: '21:00',
-        price: 200,
-        max_players: 8,
-        max_waitlist: 2,
-        court_ids: [],
-        notes: '',
-      });
+      setNewOpenPlay({ title: '', level: ['2.5'], session_date: '', start_time: '19:00', end_time: '21:00', price: 200, max_players: 8, max_waitlist: 2, court_ids: [], notes: '' });
       fetchAllData();
-    } catch (err: any) {
-      alert("❌ 新增失敗：" + (err.message || "系統錯誤"));
-    }
+    } catch (err: any) { alert("❌ 新增失敗：" + (err.message || "系統錯誤")); }
   };
 
   const submitEditOpenPlay = async (e: React.FormEvent) => {
@@ -893,25 +664,10 @@ export default function AdminPage() {
     if (editOpenPlay.court_ids.length === 0) return alert("請至少選擇一個開放場地");
 
     const payload = {
-      title: editOpenPlay.title,
-      level: editOpenPlay.level.join(', '),
-      session_date: editOpenPlay.session_date,
-      start_time: editOpenPlay.start_time,
-      end_time: editOpenPlay.end_time,
-      price: editOpenPlay.price,
-      max_players: editOpenPlay.max_players,
-      max_waitlist: editOpenPlay.max_waitlist,
-      court_ids: editOpenPlay.court_ids,
-      court_id: editOpenPlay.court_ids[0],
-      notes: editOpenPlay.notes,
+      title: editOpenPlay.title, level: editOpenPlay.level.join(', '), session_date: editOpenPlay.session_date, start_time: editOpenPlay.start_time, end_time: editOpenPlay.end_time, price: editOpenPlay.price, max_players: editOpenPlay.max_players, max_waitlist: editOpenPlay.max_waitlist, court_ids: editOpenPlay.court_ids, court_id: editOpenPlay.court_ids[0], notes: editOpenPlay.notes,
     };
-
     const { error } = await supabase.from("open_play_sessions").update(payload).eq("id", editingOpenPlayId);
-
-    if (error) {
-      alert("❌ 修改失敗！\n錯誤訊息：" + error.message);
-      return;
-    }
+    if (error) { alert("❌ 修改失敗！\n錯誤訊息：" + error.message); return; }
 
     alert("✏️ 臨打場次修改成功！");
     setEditingOpenPlayId(null);
@@ -919,135 +675,56 @@ export default function AdminPage() {
   };
 
   const startEditingOpenPlay = (session: any) => {
-    setEditOpenPlay({
-      title: session.title,
-      level: session.level ? session.level.split(',').map((l: string) => l.trim()) : ['2.5'],
-      session_date: session.session_date,
-      start_time: session.start_time,
-      end_time: session.end_time,
-      price: session.price,
-      max_players: session.max_players,
-      max_waitlist: session.max_waitlist,
-      court_ids: session.court_ids || (session.court_id ? [session.court_id] : []),
-      notes: session.notes || '',
-    });
+    setEditOpenPlay({ title: session.title, level: session.level ? session.level.split(',').map((l: string) => l.trim()) : ['2.5'], session_date: session.session_date, start_time: session.start_time, end_time: session.end_time, price: session.price, max_players: session.max_players, max_waitlist: session.max_waitlist, court_ids: session.court_ids || (session.court_id ? [session.court_id] : []), notes: session.notes || '' });
     setEditingOpenPlayId(session.id);
   };
 
   const handleDuplicateOpenPlay = (session: any) => {
-    setNewOpenPlay({
-      title: session.title,
-      level: session.level ? session.level.split(',').map((l: string) => l.trim()) : ['2.5'],
-      session_date: '',
-      start_time: session.start_time?.slice(0, 5) || '19:00',
-      end_time: session.end_time?.slice(0, 5) || '21:00',
-      price: session.price,
-      max_players: session.max_players,
-      max_waitlist: session.max_waitlist,
-      court_ids: session.court_ids || (session.court_id ? [session.court_id] : []),
-      notes: session.notes || '',
-    });
-    setIsAddingOpenPlay(true);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    setNewOpenPlay({ title: session.title, level: session.level ? session.level.split(',').map((l: string) => l.trim()) : ['2.5'], session_date: '', start_time: session.start_time?.slice(0, 5) || '19:00', end_time: session.end_time?.slice(0, 5) || '21:00', price: session.price, max_players: session.max_players, max_waitlist: session.max_waitlist, court_ids: session.court_ids || (session.court_id ? [session.court_id] : []), notes: session.notes || '' });
+    setIsAddingOpenPlay(true); window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const submitAgentBooking = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!agentName.trim() || !agentPhone.trim() || !agentBookingSession) {
-      return alert("請填寫姓名與手機號碼！");
-    }
+    if (!agentName.trim() || !agentPhone.trim() || !agentBookingSession) return alert("請填寫姓名與手機號碼！");
     setIsAgentSubmitting(true);
 
     try {
-      const { data, error } = await supabase.rpc("admin_register_open_play", {
-        p_session_id: agentBookingSession.id,
-        p_name: agentName.trim(),
-        p_phone: agentPhone.trim(),
-        p_status: agentStatus,
-        p_payment_method: 'onsite',
-        p_payment_status: agentPaymentStatus,
-        p_player_notes: agentNotes.trim() || null,
-      });
-
+      const { data, error } = await supabase.rpc("admin_register_open_play", { p_session_id: agentBookingSession.id, p_name: agentName.trim(), p_phone: agentPhone.trim(), p_status: agentStatus, p_payment_method: 'onsite', p_payment_status: agentPaymentStatus, p_player_notes: agentNotes.trim() || null });
       if (error) throw error;
       if (!data.success) throw new Error(data.message);
 
       alert(`✅ 代客報名成功！已登記為【${agentStatus === 'registered' ? '正取' : '候補'}】`);
-      setAgentBookingSession(null);
-      setAgentName("");
-      setAgentPhone("");
-      setAgentNotes("");
+      setAgentBookingSession(null); setAgentName(""); setAgentPhone(""); setAgentNotes("");
       fetchAllData();
-    } catch (err: any) {
-      alert("代客報名失敗：" + (err.message || "系統錯誤"));
-    } finally {
-      setIsAgentSubmitting(false);
-    }
+    } catch (err: any) { alert("代客報名失敗：" + (err.message || "系統錯誤")); } finally { setIsAgentSubmitting(false); }
   };
 
   const handlePromotePlayer = async (playerId: string, sessionId: string) => {
     const session = openPlaySessions.find((s) => s.id === sessionId);
     if (!session) return;
     const regCount = session.open_play_players?.filter((p: any) => p.status === 'registered').length || 0;
-
-    if (regCount >= session.max_players) {
-      alert("⚠️ 正取名額已滿！\n請先將某位正取球友「取消」，才能手動將候補轉為正取。");
-      return;
-    }
-
+    if (regCount >= session.max_players) return alert("⚠️ 正取名額已滿！\n請先將某位正取球友「取消」，才能手動將候補轉為正取。");
     if (!confirm("確定要將這位候補玩家轉為「正取」嗎？")) return;
 
-    const { error } = await supabase.from("open_play_players").update({
-      status: "registered",
-      created_at: new Date().toISOString()
-    }).eq("id", playerId);
-
-    if (error) {
-      alert("轉正失敗：" + error.message);
-    } else {
-      alert("✅ 已成功轉為正取！");
-      fetchAllData();
-    }
+    const { error } = await supabase.from("open_play_players").update({ status: "registered", created_at: new Date().toISOString() }).eq("id", playerId);
+    if (error) alert("轉正失敗：" + error.message);
+    else { alert("✅ 已成功轉為正取！"); fetchAllData(); }
   };
 
   const handleCancelOpenPlayPlayer = async (playerId: string) => {
     if (!confirm("確定要取消這位玩家嗎？\n(若取消正取，系統將自動遞補第一順位候補)")) return;
-
-    const { data: targetPlayer } = await supabase
-      .from("open_play_players")
-      .select("session_id, status")
-      .eq("id", playerId)
-      .single();
-
+    const { data: targetPlayer } = await supabase.from("open_play_players").select("session_id, status").eq("id", playerId).single();
     const { error } = await supabase.from("open_play_players").update({ status: "cancelled" }).eq("id", playerId);
-    if (error) {
-      alert("取消失敗：" + error.message);
-      return;
-    }
+    if (error) { alert("取消失敗：" + error.message); return; }
 
     if (targetPlayer && targetPlayer.status === 'registered') {
-      const { data: nextWaitlisted } = await supabase
-        .from("open_play_players")
-        .select("id")
-        .eq("session_id", targetPlayer.session_id)
-        .eq("status", "waitlisted")
-        .order("created_at", { ascending: true })
-        .limit(1)
-        .maybeSingle();
-
+      const { data: nextWaitlisted } = await supabase.from("open_play_players").select("id").eq("session_id", targetPlayer.session_id).eq("status", "waitlisted").order("created_at", { ascending: true }).limit(1).maybeSingle();
       if (nextWaitlisted) {
-        await supabase.from("open_play_players").update({
-          status: "registered",
-          created_at: new Date().toISOString()
-        }).eq("id", nextWaitlisted.id);
+        await supabase.from("open_play_players").update({ status: "registered", created_at: new Date().toISOString() }).eq("id", nextWaitlisted.id);
         alert("✅ 玩家已取消！系統已自動將第一順位候補球友遞補為正取。");
-      } else {
-        alert("✅ 玩家已取消！目前無人候補。");
-      }
-    } else {
-      alert("✅ 候補玩家已成功取消。");
-    }
-
+      } else alert("✅ 玩家已取消！目前無人候補。");
+    } else alert("✅ 候補玩家已成功取消。");
     fetchAllData();
   };
 
@@ -1060,10 +737,7 @@ export default function AdminPage() {
 
   const getCourtNames = (session: any) => {
     if (session.court_ids && session.court_ids.length > 0) {
-      return session.court_ids
-        .map((id: string) => courtsList.find((c) => c.id === id)?.name)
-        .filter(Boolean)
-        .join('、');
+      return session.court_ids.map((id: string) => courtsList.find((c) => c.id === id)?.name).filter(Boolean).join('、');
     }
     return session.courts?.name || '未定';
   };
@@ -1124,49 +798,104 @@ export default function AdminPage() {
       </header>
 
       <div className="p-5 space-y-4">
-        {/* 後台主分頁 */}
-        <div className="grid grid-cols-5 gap-1 bg-gray-200 p-1 rounded-xl">
-          <button
-            onClick={() => setActiveTab('dashboard')}
-            className={`py-2 text-[10px] font-bold rounded-lg transition-all ${activeTab === 'dashboard' ? 'shadow-sm bg-white text-gray-900' : 'opacity-60 text-gray-600'
-              }`}
-          >
-            📊 營收
-          </button>
-          <button
-            onClick={() => setActiveTab('courts')}
-            className={`py-2 text-[10px] font-bold rounded-lg transition-all ${activeTab === 'courts' ? 'shadow-sm bg-white text-emerald-600' : 'opacity-60 text-gray-600'
-              }`}
-          >
-            場地
-          </button>
-          <button
-            onClick={() => setActiveTab('classes')}
-            className={`py-2 text-[10px] font-bold rounded-lg transition-all ${activeTab === 'classes' ? 'shadow-sm bg-white text-orange-600' : 'opacity-60 text-gray-600'
-              }`}
-          >
-            課程
-          </button>
-          <button
-            onClick={() => setActiveTab('open_plays')}
-            className={`py-2 text-[10px] font-bold rounded-lg transition-all ${activeTab === 'open_plays' ? 'shadow-sm bg-white text-blue-600' : 'opacity-60 text-gray-600'
-              }`}
-          >
-            臨打
-          </button>
-          <button
-            onClick={() => setActiveTab('settings')}
-            className={`py-2 text-[10px] font-bold rounded-lg transition-all ${activeTab === 'settings' ? 'shadow-sm bg-white text-purple-600' : 'opacity-60 text-gray-600'
-              }`}
-          >
-            ⚙️ 設定
-          </button>
+        {/* 🌟 依照您的要求調整排序：第一排 營收、歷史、設定；第二排 場地、臨打、課程 (不使用左右滑動，改為兩排固定網格) */}
+        <div className="grid grid-cols-3 gap-1.5 bg-gray-200 p-1.5 rounded-xl">
+          <button onClick={() => setActiveTab('dashboard')} className={`py-2 text-xs font-bold rounded-lg transition-all ${activeTab === 'dashboard' ? 'shadow-sm bg-white text-gray-900' : 'opacity-60 text-gray-600'}`}>📊 營收</button>
+          <button onClick={() => setActiveTab('history')} className={`py-2 text-xs font-bold rounded-lg transition-all ${activeTab === 'history' ? 'shadow-sm bg-white text-indigo-600' : 'opacity-60 text-gray-600'}`}>📜 歷史</button>
+          <button onClick={() => setActiveTab('settings')} className={`py-2 text-xs font-bold rounded-lg transition-all ${activeTab === 'settings' ? 'shadow-sm bg-white text-purple-600' : 'opacity-60 text-gray-600'}`}>⚙️ 設定</button>
+
+          <button onClick={() => setActiveTab('courts')} className={`py-2 text-xs font-bold rounded-lg transition-all ${activeTab === 'courts' ? 'shadow-sm bg-white text-emerald-600' : 'opacity-60 text-gray-600'}`}>🎾 場地</button>
+          <button onClick={() => setActiveTab('open_plays')} className={`py-2 text-xs font-bold rounded-lg transition-all ${activeTab === 'open_plays' ? 'shadow-sm bg-white text-blue-600' : 'opacity-60 text-gray-600'}`}>👥 臨打</button>
+          <button onClick={() => setActiveTab('classes')} className={`py-2 text-xs font-bold rounded-lg transition-all ${activeTab === 'classes' ? 'shadow-sm bg-white text-orange-600' : 'opacity-60 text-gray-600'}`}>🎓 課程</button>
         </div>
 
         {loading ? (
           <p className="text-center mt-10 font-bold animate-pulse text-gray-500">調閱資料中...</p>
         ) : (
           <>
+            {/* 歷史紀錄調閱分頁 */}
+            {activeTab === 'history' && (
+              <div className="space-y-4 animate-in fade-in pb-10">
+                <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-200 space-y-3">
+                  <h3 className="text-sm font-bold text-gray-800 flex items-center gap-1.5">
+                    <Calendar size={18} className="text-gray-600" /> 歷史紀錄調閱
+                  </h3>
+                  <div className="flex gap-2">
+                    <input type="date" value={historyStartDate} onChange={(e) => setHistoryStartDate(e.target.value)} className="flex-1 bg-gray-50 border p-2 rounded-lg text-xs" style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }} />
+                    <span className="self-center text-gray-500 font-bold">~</span>
+                    <input type="date" value={historyEndDate} onChange={(e) => setHistoryEndDate(e.target.value)} className="flex-1 bg-gray-50 border p-2 rounded-lg text-xs" style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }} />
+                  </div>
+                  <div className="flex gap-2">
+                    <select value={historyType} onChange={(e) => setHistoryType(e.target.value as any)} className="flex-1 bg-gray-50 border p-2 rounded-lg text-xs font-bold" style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}>
+                      <option value="open_plays">臨打活動</option>
+                      <option value="classes">體驗課程</option>
+                      <option value="courts">場地租借</option>
+                    </select>
+                    <button onClick={fetchHistoryData} disabled={isFetchingHistory} className="bg-gray-800 text-white px-4 py-2 rounded-lg text-xs font-bold disabled:opacity-50">
+                      {isFetchingHistory ? '查詢中...' : '查詢'}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  {!isFetchingHistory && historyResults.length === 0 ? (
+                    <p className="text-center text-xs text-gray-400 py-5">無符合條件的歷史紀錄</p>
+                  ) : (
+                    historyResults.map((item) => {
+                      if (historyType === 'open_plays' || historyType === 'classes') {
+                        const isClass = historyType === 'classes';
+                        const dateField = isClass ? item.class_date : item.session_date;
+                        const bookings = isClass ? item.class_bookings : item.open_play_players;
+                        const activeCount = bookings?.filter((b: any) => b.status !== 'cancelled').length || 0;
+                        return (
+                          <div key={item.id} className="bg-white p-3 rounded-xl border shadow-sm">
+                            <div className="flex justify-between items-start border-b pb-2 mb-2">
+                              <div>
+                                <p className="text-sm font-bold text-gray-800">{item.title}</p>
+                                <p className="text-xs text-gray-500">{dateField} | {item.start_time?.slice(0, 5)}-{item.end_time?.slice(0, 5)}</p>
+                              </div>
+                              <div className="text-right text-xs">
+                                <p className="font-bold text-gray-800">報名人數: {activeCount}</p>
+                                <p className="text-gray-500">{item.courts?.name}</p>
+                              </div>
+                            </div>
+                            <div className="space-y-1 max-h-32 overflow-y-auto pr-1">
+                              {bookings?.filter((b: any) => b.status !== 'cancelled').map((b: any) => (
+                                <div key={b.id} className="flex justify-between text-[11px] bg-gray-50 p-1.5 rounded">
+                                  <span className="font-bold text-gray-700">{b.users?.name} <span className="text-gray-400 font-normal">({b.users?.phone?.slice(-4)})</span></span>
+                                  <span className={b.payment_status === 'paid' ? 'text-emerald-600 font-bold' : 'text-amber-600 font-bold'}>
+                                    {b.payment_status === 'paid' ? '已收款' : '待收款'}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )
+                      } else {
+                        return (
+                          <div key={item.ids[0]} className="bg-white p-3 rounded-xl border shadow-sm">
+                            <div className="flex justify-between items-start">
+                              <div>
+                                <p className="text-sm font-bold text-gray-800">{item.courts?.name}</p>
+                                <p className="text-xs text-gray-500">{item.booking_date} | {item.start_time?.slice(0, 5)}-{item.end_time?.slice(0, 5)}</p>
+                                <p className="text-[11px] mt-1 font-bold text-gray-700">👤 {item.users?.name} ({item.users?.phone})</p>
+                              </div>
+                              <div className="text-right">
+                                <p className={`text-[10px] font-bold px-2 py-0.5 rounded ${item.status === 'booked' ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
+                                  {item.status === 'booked' ? '已預約' : '已取消'}
+                                </p>
+                                <p className="text-sm font-bold mt-1 text-gray-800">${item.totalPrice}</p>
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      }
+                    })
+                  )}
+                </div>
+              </div>
+            )}
+
             {activeTab === 'dashboard' && (
               <div className="space-y-4 animate-in fade-in">
                 <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm space-y-3">
@@ -1186,6 +915,7 @@ export default function AdminPage() {
                       type="text"
                       placeholder="輸入姓名或手機號碼 (末三碼可)..."
                       className="w-full bg-gray-50 text-gray-900 border border-gray-200 rounded-xl pl-9 pr-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
                       value={checkInKeyword}
                       onChange={(e) => setCheckInKeyword(e.target.value)}
                     />
@@ -1871,7 +1601,548 @@ export default function AdminPage() {
               </div>
             )}
 
-            {/* 設定分頁 (包含動態費率與國定假日管理) */}
+            {activeTab === 'open_plays' && (
+              <div className="space-y-4">
+                {showVisualSchedule ? (
+                  <div className="bg-white p-4 rounded-xl border border-blue-300 shadow-lg animate-in fade-in zoom-in-95">
+                    <div className="flex justify-between items-center mb-3 border-b pb-2">
+                      <h4 className="font-bold text-blue-800 flex items-center gap-1.5">
+                        <Eye size={18} /> 視覺化空檔快選
+                      </h4>
+                      <button onClick={() => { setShowVisualSchedule(false); setSelectedGrid([]); }} className="text-gray-400 hover:text-gray-600">
+                        <X size={20} />
+                      </button>
+                    </div>
+
+                    <div className="mb-4">
+                      <label className="text-xs text-gray-500 font-bold block mb-1">目標日期</label>
+                      <input
+                        type="date"
+                        value={visualDate}
+                        onChange={(e) => { setVisualDate(e.target.value); setSelectedGrid([]); }}
+                        className="w-full bg-gray-50 text-gray-900 border border-gray-300 p-2 rounded-lg text-sm focus:outline-none"
+                      />
+                    </div>
+
+                    <p className="text-[11px] text-gray-500 mb-2 font-bold flex items-center gap-1">
+                      <MousePointerClick size={12} /> 點擊綠色格子選擇空檔 (可跨時間與跨場地)
+                    </p>
+
+                    <div className="overflow-x-auto max-h-[400px] border border-gray-200 rounded-lg">
+                      <table className="w-full text-xs text-center border-collapse">
+                        <thead className="sticky top-0 z-20 shadow-sm">
+                          <tr>
+                            <th className="border-b p-2 bg-gray-100 text-gray-600 font-bold sticky left-0 z-30 w-16">時間</th>
+                            {courtsList.map(c => (
+                              <th key={c.id} className="border-b border-l p-2 bg-gray-100 text-gray-700 font-bold min-w-[80px]">
+                                {c.name}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {timeSlots.map(time => (
+                            <tr key={time}>
+                              <td className="border-b p-1.5 bg-gray-50 sticky left-0 z-10 font-bold text-gray-500">{time}</td>
+                              {courtsList.map(c => {
+                                const status = checkIsOccupied(c.id, time);
+                                const cellKey = `${c.id}_${time}`;
+                                const isSelected = selectedGrid.includes(cellKey);
+
+                                if (status.occupied) {
+                                  return (
+                                    <td key={c.id} className="border-b border-l p-1 bg-gray-200">
+                                      <span className="text-[10px] text-gray-500 font-bold block">{status.label}</span>
+                                    </td>
+                                  );
+                                }
+                                return (
+                                  <td
+                                    key={c.id}
+                                    onClick={() => toggleCellSelection(cellKey)}
+                                    className={`border-b border-l p-1 cursor-pointer transition select-none ${isSelected
+                                        ? 'bg-blue-500 text-white font-bold'
+                                        : 'bg-green-50 text-green-700 hover:bg-green-200 font-medium'
+                                      }`}
+                                  >
+                                    {isSelected ? '已選' : '空檔'}
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <button
+                      onClick={handleQuickConvertOpenPlay}
+                      className="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl shadow-md transition"
+                    >
+                      將選取的 {selectedGrid.length} 個時段轉為臨打
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setIsAddingOpenPlay(!isAddingOpenPlay)}
+                      className="flex-1 py-3 bg-blue-100 text-blue-700 font-bold rounded-xl flex justify-center items-center gap-2 border border-blue-200 transition hover:bg-blue-200"
+                    >
+                      {isAddingOpenPlay ? <><X size={18} /> 取消新增</> : <><Plus size={18} /> 一般新增臨打</>}
+                    </button>
+
+                    <button
+                      onClick={() => { setShowVisualSchedule(true); setIsAddingOpenPlay(false); }}
+                      className="flex-1 py-3 bg-indigo-100 text-indigo-700 font-bold rounded-xl flex justify-center items-center gap-2 border border-indigo-200 transition hover:bg-indigo-200"
+                    >
+                      <Eye size={18} /> 空檔視覺化快選
+                    </button>
+                  </div>
+                )}
+
+                {isAddingOpenPlay && (
+                  <form
+                    onSubmit={submitNewOpenPlay}
+                    className="bg-white p-4 rounded-xl border-2 border-blue-400 space-y-3 shadow-md animate-in fade-in"
+                  >
+                    <div className="flex justify-between items-center border-b pb-2">
+                      <h4 className="font-bold text-blue-800 text-sm">新增臨打場次</h4>
+                      <button
+                        type="button"
+                        onClick={() => setIsAddingOpenPlay(false)}
+                        className="text-gray-400 hover:text-gray-600"
+                      >
+                        <X size={18} />
+                      </button>
+                    </div>
+
+                    <input
+                      type="text"
+                      placeholder="場次名稱"
+                      required
+                      className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
+                      style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
+                      value={newOpenPlay.title}
+                      onChange={(e) => setNewOpenPlay({ ...newOpenPlay, title: e.target.value })}
+                    />
+
+                    <div>
+                      <label className="text-xs text-gray-500 mb-1 block">開放場地 (可多選)</label>
+                      <div className="flex flex-wrap gap-2">
+                        {courtsList.map(court => (
+                          <label key={court.id} className="flex items-center gap-1.5 text-sm bg-gray-50 border px-3 py-1.5 rounded-lg cursor-pointer">
+                            <input
+                              type="checkbox"
+                              className="accent-blue-600"
+                              checked={newOpenPlay.court_ids.includes(court.id)}
+                              onChange={(e) => {
+                                const newCourts = e.target.checked
+                                  ? [...newOpenPlay.court_ids, court.id]
+                                  : newOpenPlay.court_ids.filter((id: string) => id !== court.id);
+                                setNewOpenPlay({ ...newOpenPlay, court_ids: newCourts });
+                              }}
+                            />
+                            {court.name}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-xs text-gray-500 mb-1 block">DUPR 等級 (可多選)</label>
+                      <div className="flex flex-wrap gap-2">
+                        {['2.0', '2.5', '3.0', '3.5', '4.0'].map(lvl => (
+                          <label key={lvl} className="flex items-center gap-1.5 text-sm bg-gray-50 border px-3 py-1.5 rounded-lg cursor-pointer">
+                            <input
+                              type="checkbox"
+                              className="accent-blue-600"
+                              checked={newOpenPlay.level.includes(lvl)}
+                              onChange={(e) => {
+                                const newLevels = e.target.checked
+                                  ? [...newOpenPlay.level, lvl]
+                                  : newOpenPlay.level.filter(l => l !== lvl);
+                                setNewOpenPlay({ ...newOpenPlay, level: newLevels });
+                              }}
+                            />
+                            {lvl}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+
+                    <input
+                      type="date"
+                      required
+                      className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
+                      style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
+                      value={newOpenPlay.session_date}
+                      onChange={(e) => setNewOpenPlay({ ...newOpenPlay, session_date: e.target.value })}
+                    />
+                    <div className="flex gap-2">
+                      <input
+                        type="time"
+                        required
+                        className="flex-1 bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
+                        style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
+                        value={newOpenPlay.start_time}
+                        onChange={(e) => setNewOpenPlay({ ...newOpenPlay, start_time: e.target.value })}
+                      />
+                      <input
+                        type="time"
+                        required
+                        className="flex-1 bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
+                        style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
+                        value={newOpenPlay.end_time}
+                        onChange={(e) => setNewOpenPlay({ ...newOpenPlay, end_time: e.target.value })}
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2">
+                      <div>
+                        <label className="text-xs text-gray-500 mb-1 block">正取人數</label>
+                        <input
+                          type="number"
+                          required
+                          className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
+                          style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
+                          value={newOpenPlay.max_players}
+                          onChange={(e) => setNewOpenPlay({ ...newOpenPlay, max_players: Number(e.target.value) })}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-500 mb-1 block">候補人數</label>
+                        <input
+                          type="number"
+                          required
+                          className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
+                          style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
+                          value={newOpenPlay.max_waitlist}
+                          onChange={(e) => setNewOpenPlay({ ...newOpenPlay, max_waitlist: Number(e.target.value) })}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-500 mb-1 block">價格 (元)</label>
+                        <input
+                          type="number"
+                          required
+                          className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
+                          style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
+                          value={newOpenPlay.price}
+                          onChange={(e) => setNewOpenPlay({ ...newOpenPlay, price: Number(e.target.value) })}
+                        />
+                      </div>
+                    </div>
+
+                    <input
+                      type="text"
+                      placeholder="備註 (選填，例如：含教練指導)"
+                      className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
+                      style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
+                      value={newOpenPlay.notes}
+                      onChange={(e) => setNewOpenPlay({ ...newOpenPlay, notes: e.target.value })}
+                    />
+
+                    <button type="submit" className="w-full bg-blue-600 text-white font-bold py-2 rounded-lg shadow">
+                      確認新增
+                    </button>
+                  </form>
+                )}
+
+                {openPlaySessions.length === 0 ? (
+                  <p className="text-center text-gray-500 mt-10">無臨打場次</p>
+                ) : (
+                  openPlaySessions.map((session) => {
+                    const activePlayers = session.open_play_players?.filter((p: any) => p.status !== 'cancelled') || [];
+
+                    if (editingOpenPlayId === session.id) {
+                      return (
+                        <form
+                          key={session.id}
+                          onSubmit={submitEditOpenPlay}
+                          className="bg-blue-50 p-4 rounded-xl border-2 border-blue-400 space-y-3 shadow-md animate-in fade-in"
+                        >
+                          <h4 className="font-bold text-blue-800 border-b border-blue-200 pb-2">✏️ 編輯臨打場次</h4>
+                          <input
+                            type="text"
+                            placeholder="場次名稱"
+                            required
+                            className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
+                            style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
+                            value={editOpenPlay.title}
+                            onChange={(e) => setEditOpenPlay({ ...editOpenPlay, title: e.target.value })}
+                          />
+
+                          <div>
+                            <label className="text-xs text-gray-500 mb-1 block">開放場地 (可多選)</label>
+                            <div className="flex flex-wrap gap-2">
+                              {courtsList.map(court => (
+                                <label key={court.id} className="flex items-center gap-1.5 text-sm bg-gray-50 border px-3 py-1.5 rounded-lg cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    className="accent-blue-600"
+                                    checked={editOpenPlay.court_ids.includes(court.id)}
+                                    onChange={(e) => {
+                                      const newCourts = e.target.checked
+                                        ? [...editOpenPlay.court_ids, court.id]
+                                        : editOpenPlay.court_ids.filter(id => id !== court.id);
+                                      setEditOpenPlay({ ...editOpenPlay, court_ids: newCourts });
+                                    }}
+                                  />
+                                  {court.name}
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="text-xs text-gray-500 mb-1 block">DUPR 等級 (可多選)</label>
+                            <div className="flex flex-wrap gap-2">
+                              {['2.0', '2.5', '3.0', '3.5', '4.0'].map(lvl => (
+                                <label key={lvl} className="flex items-center gap-1.5 text-sm bg-gray-50 border px-3 py-1.5 rounded-lg cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    className="accent-blue-600"
+                                    checked={editOpenPlay.level.includes(lvl)}
+                                    onChange={(e) => {
+                                      const newLevels = e.target.checked
+                                        ? [...editOpenPlay.level, lvl]
+                                        : editOpenPlay.level.filter(l => l !== lvl);
+                                      setEditOpenPlay({ ...editOpenPlay, level: newLevels });
+                                    }}
+                                  />
+                                  {lvl}
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+
+                          <input
+                            type="date"
+                            required
+                            className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
+                            style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
+                            value={editOpenPlay.session_date}
+                            onChange={(e) => setEditOpenPlay({ ...editOpenPlay, session_date: e.target.value })}
+                          />
+                          <div className="flex gap-2">
+                            <input
+                              type="time"
+                              required
+                              className="flex-1 bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
+                              style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
+                              value={editOpenPlay.start_time}
+                              onChange={(e) => setEditOpenPlay({ ...editOpenPlay, start_time: e.target.value })}
+                            />
+                            <input
+                              type="time"
+                              required
+                              className="flex-1 bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
+                              style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
+                              value={editOpenPlay.end_time}
+                              onChange={(e) => setEditOpenPlay({ ...editOpenPlay, end_time: e.target.value })}
+                            />
+                          </div>
+
+                          <div className="grid grid-cols-3 gap-2">
+                            <div>
+                              <label className="text-xs text-gray-500 mb-1 block">正取人數</label>
+                              <input
+                                type="number"
+                                required
+                                className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
+                                style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
+                                value={editOpenPlay.max_players}
+                                onChange={(e) => setEditOpenPlay({ ...editOpenPlay, max_players: Number(e.target.value) })}
+                              />
+                            </div>
+                            <div>
+                              <label className="text-xs text-gray-500 mb-1 block">候補人數</label>
+                              <input
+                                type="number"
+                                required
+                                className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
+                                style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
+                                value={editOpenPlay.max_waitlist}
+                                onChange={(e) => setEditOpenPlay({ ...editOpenPlay, max_waitlist: Number(e.target.value) })}
+                              />
+                            </div>
+                            <div>
+                              <label className="text-xs text-gray-500 mb-1 block">價格 (元)</label>
+                              <input
+                                type="number"
+                                required
+                                className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
+                                style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
+                                value={editOpenPlay.price}
+                                onChange={(e) => setEditOpenPlay({ ...editOpenPlay, price: Number(e.target.value) })}
+                              />
+                            </div>
+                          </div>
+
+                          <input
+                            type="text"
+                            placeholder="備註 (選填)"
+                            className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
+                            style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
+                            value={editOpenPlay.notes}
+                            onChange={(e) => setEditOpenPlay({ ...editOpenPlay, notes: e.target.value })}
+                          />
+
+                          <div className="flex gap-2 pt-2">
+                            <button
+                              type="button"
+                              onClick={() => setEditingOpenPlayId(null)}
+                              className="flex-1 bg-white border border-gray-300 text-gray-600 font-bold py-2 rounded-lg text-sm"
+                            >
+                              取消
+                            </button>
+                            <button
+                              type="submit"
+                              className="flex-1 bg-blue-600 text-white font-bold py-2 rounded-lg text-sm shadow"
+                            >
+                              儲存修改
+                            </button>
+                          </div>
+                        </form>
+                      );
+                    }
+
+                    return (
+                      <div key={session.id} className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+                        <div className="bg-blue-50 p-4 border-b border-blue-100 flex justify-between items-start">
+                          <div>
+                            <span className="text-xs font-bold text-blue-700 bg-blue-100 px-2 py-0.5 rounded mb-1 inline-block">
+                              DUPR {session.level}
+                            </span>
+                            <h3 className="font-bold text-gray-800 text-base">{session.title}</h3>
+                            <p className="text-sm text-gray-600 mt-1">
+                              📅 {session.session_date} | {session.start_time?.slice(0, 5)}-{session.end_time?.slice(0, 5)}
+                            </p>
+                            <p className="text-xs text-blue-600 font-bold mt-1">
+                              💰 ${session.price} / 人 (正取 {session.max_players} 人 / 候補 {session.max_waitlist} 人)
+                            </p>
+                            {session.notes && <p className="text-xs text-gray-500 mt-1">📝 館方備註：{session.notes}</p>}
+                          </div>
+
+                          <div className="flex flex-col items-end gap-2 shrink-0">
+                            <span className="text-xs font-bold text-blue-700 bg-blue-200 px-2 py-1 rounded">
+                              {getCourtNames(session)}
+                            </span>
+                            <div className="flex items-center gap-2 mt-1">
+                              <button
+                                onClick={() => handleDuplicateOpenPlay(session)}
+                                title="複製為新場次"
+                                className="flex items-center gap-0.5 text-xs font-bold text-gray-600 hover:text-gray-900 bg-white border border-gray-300 px-1.5 py-1 rounded"
+                              >
+                                <Copy size={12} /> 複製
+                              </button>
+                              <button
+                                onClick={() => startEditingOpenPlay(session)}
+                                className="flex items-center gap-1 text-xs font-bold text-blue-600 hover:text-blue-800"
+                              >
+                                <Edit size={14} /> 編輯
+                              </button>
+                              <button
+                                onClick={() => handleDeleteOpenPlaySession(session.id)}
+                                className="flex items-center gap-1 text-xs font-bold text-red-500 hover:text-red-700"
+                              >
+                                <Trash2 size={14} /> 刪除
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="p-4 space-y-3">
+                          <div className="flex justify-between items-center pb-2 border-b border-gray-100">
+                            <span className="text-xs font-bold text-gray-500">
+                              目前報名名冊 ({activePlayers.length} 人)
+                            </span>
+                            <button
+                              onClick={() => setAgentBookingSession(session)}
+                              className="text-xs font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1 bg-blue-50 border border-blue-200 px-2.5 py-1 rounded-lg"
+                            >
+                              <UserPlus size={13} /> 代客登記球友
+                            </button>
+                          </div>
+
+                          {activePlayers.length === 0 ? (
+                            <p className="text-sm text-gray-400 text-center py-2">目前無人報名</p>
+                          ) : (
+                            activePlayers.map((player: any) => (
+                              <div
+                                key={player.id}
+                                className="flex flex-col sm:flex-row justify-between items-start sm:items-center text-sm bg-gray-50 p-3 rounded-xl border border-gray-100 gap-2"
+                              >
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span
+                                      className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${player.status === 'registered'
+                                          ? 'bg-blue-100 text-blue-700'
+                                          : 'bg-amber-100 text-amber-700'
+                                        }`}
+                                    >
+                                      {player.status === 'registered' ? '正取' : '候補'}
+                                    </span>
+                                    <span className="font-semibold text-gray-800">{player.users?.name}</span>
+                                    <span className="text-gray-500 text-xs">({player.users?.phone})</span>
+
+                                    <span
+                                      className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${player.payment_method === 'online'
+                                          ? 'bg-green-100 text-green-700'
+                                          : 'bg-gray-200 text-gray-700'
+                                        }`}
+                                    >
+                                      {player.payment_method === 'online' ? '📱 線上付款' : '💵 現場付款'}
+                                    </span>
+                                  </div>
+
+                                  {player.player_notes && (
+                                    <p className="text-xs text-gray-500 mt-1">💬 備註：{player.player_notes}</p>
+                                  )}
+                                </div>
+
+                                <div className="flex items-center gap-2 w-full sm:w-auto justify-end pt-2 sm:pt-0 border-t sm:border-t-0 border-gray-200">
+                                  {player.status === 'registered' && (
+                                    <button
+                                      onClick={() => handleToggleOpenPlayPayment(player.id, player.payment_status)}
+                                      className={`text-xs font-bold px-2.5 py-1.5 rounded-lg border transition flex items-center gap-1 ${player.payment_status === 'paid'
+                                          ? 'bg-emerald-500 text-white border-emerald-600'
+                                          : 'bg-amber-100 text-amber-800 border-amber-300'
+                                        }`}
+                                    >
+                                      <DollarSign size={14} />
+                                      {player.payment_status === 'paid' ? '已收款' : '待收款'}
+                                    </button>
+                                  )}
+
+                                  {player.status === 'waitlisted' && (
+                                    <button
+                                      onClick={() => handlePromotePlayer(player.id, session.id)}
+                                      className="text-xs flex items-center gap-1 text-emerald-600 hover:text-emerald-800 font-bold px-2 py-1 bg-emerald-50 border border-emerald-200 rounded"
+                                    >
+                                      <CheckCircle size={12} /> 轉正取
+                                    </button>
+                                  )}
+
+                                  <button
+                                    onClick={() => handleCancelOpenPlayPlayer(player.id)}
+                                    className="text-xs text-red-500 hover:text-red-700 font-bold px-2 py-1 bg-red-50 border border-red-200 rounded"
+                                  >
+                                    取消
+                                  </button>
+                                </div>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            )}
+
+            {/* 設定分頁 */}
             {activeTab === 'settings' && (
               <div className="space-y-4 animate-in fade-in pb-10">
                 <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200 space-y-4">
@@ -1967,7 +2238,6 @@ export default function AdminPage() {
                   </form>
                 </div>
 
-                {/* 🌟 國定假日 / 特殊日管理區塊 */}
                 <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200 space-y-4">
                   <h3 className="font-bold text-gray-800 text-base border-b pb-2 flex items-center gap-2">
                     <CalendarPlus size={18} className="text-amber-600" /> 國定假日 / 特殊日管理
@@ -2029,7 +2299,6 @@ export default function AdminPage() {
                   </div>
                 </div>
 
-                {/* 🌟 尖峰/離峰費率規則管理區塊 */}
                 <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200 space-y-4">
                   <h3 className="font-bold text-gray-800 text-base border-b pb-2 flex items-center gap-2">
                     <DollarSign size={18} className="text-emerald-600" /> 動態費率時段規則設定
@@ -2079,7 +2348,7 @@ export default function AdminPage() {
                       <input
                         type="time"
                         required
-                        className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-xs"
+                        className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2 text-xs"
                         style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
                         value={newRuleEnd}
                         onChange={(e) => setNewRuleEnd(e.target.value)}
@@ -2181,7 +2450,7 @@ export default function AdminPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="text-xs font-bold text-gray-600 mb-1 block">收款狀態</label>
+                  <label className="text-xs font-bold text-gray-600 mb-1`">收款狀態</label>
                   <select
                     className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2 text-sm"
                     style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
