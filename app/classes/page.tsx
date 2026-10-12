@@ -3,14 +3,14 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../../lib/supabase";
 import Link from "next/link";
-import {
-  ArrowLeft,
-  UserCircle,
-  CheckCircle2,
-  QrCode,
-  Copy,
+import { 
+  ArrowLeft, 
+  UserCircle, 
+  CheckCircle2, 
+  QrCode, 
+  Copy, 
   MessageCircle,
-  MapPin
+  MapPin 
 } from "lucide-react";
 
 const getRel = (obj: any) => (Array.isArray(obj) ? obj[0] : obj);
@@ -72,13 +72,13 @@ export default function ClassesPage() {
     if (!sessionDate || !startTime) return false;
     const now = new Date();
     const todayStr = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().split("T")[0];
-
+    
     if (sessionDate < todayStr) return true;
     if (sessionDate === todayStr) {
       const currentHours = now.getHours().toString().padStart(2, '0');
       const currentMins = now.getMinutes().toString().padStart(2, '0');
       const currentTimeStr = `${currentHours}:${currentMins}`;
-
+      
       const sessionStartTime = startTime.slice(0, 5);
       if (sessionStartTime <= currentTimeStr) return true;
     }
@@ -259,10 +259,11 @@ export default function ClassesPage() {
                       setSelectedClass(cls);
                       setSuccessMsg("");
                     }}
-                    className={`w-full font-bold py-3 rounded-xl transition-all shadow-md ${isFull
+                    className={`w-full font-bold py-3 rounded-xl transition-all shadow-md ${
+                      isFull
                         ? 'bg-gray-200 text-gray-400 cursor-not-allowed shadow-none'
                         : 'text-white bg-orange-600 active:scale-95 cursor-pointer'
-                      }`}
+                    }`}
                   >
                     {isFull ? '已額滿' : '我要報名'}
                   </button>
