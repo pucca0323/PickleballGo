@@ -35,7 +35,17 @@ export default function MyBookingsPage() {
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [editNoteText, setEditNoteText] = useState("");
 
-  const [activePaymentModal, setActivePaymentModal] = useState<any | null>(null);
+  type PaymentInfo = {
+    kind: 'court' | 'play' | 'class';
+    title: string;
+    date: string;
+    start: string;
+    end: string;
+    amount: number | null;
+    reference: string;
+    detail?: string;
+  };
+  const [activePaymentModal, setActivePaymentModal] = useState<PaymentInfo | null>(null);
 
   const [cancelLimitHours, setCancelLimitHours] = useState<number>(3);
   const [lineUrl, setLineUrl] = useState("https://lin.ee/your_line_id");
@@ -113,6 +123,7 @@ export default function MyBookingsPage() {
             currentGroup.booking_date === b.booking_date &&
             currentGroup.court_id === b.court_id &&
             currentGroup.status === b.status &&
+            currentGroup.payment_method === b.payment_method &&
             currentGroup.end_time === b.start_time;
 
           if (isContiguous) {
@@ -187,30 +198,105 @@ export default function MyBookingsPage() {
     }
   };
 
-  const handleCopyText = async (item: any) => {
-    const session = getRel(item.open_play_sessions);
-    const text = `【匹克球館 - 繳費回報】
-👤 報名人：${user.name} (${user.phone})
-📅 場次：${session?.session_date} | ${session?.start_time?.slice(0, 5)} - ${session?.end_time?.slice(0, 5)}
-🏷️ 項目：${session?.title} (DUPR ${session?.level})
-💰 應繳金額：$${session?.price}
-———————————
-✅ 我已完成線上掃碼付款！
-📱 支付方式：LINE Pay / TWQR
-🆔 我的LINE暱稱：＿＿＿＿＿ (請填寫)`;
+  const formatMoney = (amount: number | null) =>
+    amount === null ? '金額請洽館方' : `NT$ ${amount.toLocaleString('zh-TW')}`;
 
+  const readAmount = (value: unknown): number | null => {
+    if (value === null || value === undefined || value === '') return null;
+    const n = Number(value);
+    return Number.isFinite(n) && n >= 0 ? n : null;
+  };
+
+  const getCourtPayment = (b: any): PaymentInfo => {
+    const court = getRel(b.courts);
+    // 僅使用查詢 RPC 已回傳的價格；沒有價格時不猜測費用。
+    const perSlot = b.price !== undefined ? readAmount(b.price) : null;
+    const total = readAmount(b.total_price) ?? (b.ids.length === 1 ? perSlot : null);
+    return {
+      kind: 'court', title: court?.name || '場地預約',
+      date: b.booking_date, start: b.start_time?.slice(0, 5) || '',
+      end: b.end_time?.slice(0, 5) || '', amount: total,
+      reference: String(b.ids?.[0] || b.id || ''),
+      detail: `共 ${b.ids.length * 0.5} 小時`,
+    };
+  };
+
+  const getPlayPayment = (b: any): PaymentInfo => {
+    const session = getRel(b.open_play_sessions);
+    return {
+      kind: 'play', title: session?.title || '臨打報名',
+      date: session?.session_date || '',
+      start: session?.start_time?.slice(0, 5) || '',
+      end: session?.end_time?.slice(0, 5) || '',
+      amount: readAmount(session?.price), reference: String(b.id || ''),
+      detail: session?.level ? `DUPR ${session.level}` : undefined,
+    };
+  };
+
+  const getClassPayment = (b: any): PaymentInfo => {
+    const cls = getRel(b.classes);
+    return {
+      kind: 'class', title: cls?.title || '體驗課程',
+      date: cls?.class_date || '',
+      start: cls?.start_time?.slice(0, 5) || '',
+      end: cls?.end_time?.slice(0, 5) || '',
+      amount: readAmount(b.price ?? cls?.price), reference: String(b.id || ''),
+      detail: cls?.coach ? `教練：${cls.coach}` : undefined,
+    };
+  };
+
+  const handleCopyText = async (item: PaymentInfo) => {
+    const category = item.kind === 'court' ? '場地預約' : item.kind === 'play' ? '臨打報名' : '體驗課程';
+    const text = `【PickleGo－${category}繳費回報】
+👤 預約人：${user?.name || ''}（${user?.phone || phone.trim()}）
+📅 日期時間：${item.date} ${item.start}–${item.end}
+🏷️ 項目：${item.title}${item.detail ? `（${item.detail}）` : ''}
+🆔 預約識別碼：${item.reference}
+💰 應繳金額：${formatMoney(item.amount)}
+——————————
+✅ 我已完成線上掃碼付款
+📱 支付方式：LINE Pay / TWQR
+🆔 我的 LINE 暱稱：＿＿＿＿（請填寫）
+請協助確認款項，謝謝！`;
     try {
       await navigator.clipboard.writeText(text);
-      alert("✅ 回報文案已複製！\n\n請點擊下方的「前往官方 LINE 回報」按鈕，貼上訊息並填寫您的暱稱。");
+      alert('付款回報已複製，請前往官方 LINE 貼上並填寫暱稱。\n注意：複製訊息不代表已確認付款。');
     } catch {
-      alert("複製失敗，請手動選取複製。");
+      alert('複製失敗，請確認瀏覽器剪貼簿權限。');
     }
   };
 
-  const paymentSession = activePaymentModal ? getRel(activePaymentModal.open_play_sessions) : null;
+  const paymentButtons = (item: PaymentInfo, showQR = true) => (
+    <div className="mt-3 grid grid-cols-2 gap-2 min-w-0">
+      {showQR && (
+        <button type="button" onClick={() => setActivePaymentModal(item)}
+          className="col-span-2 flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-3 py-3 text-sm font-bold text-white">
+          <QrCode size={17} /> 查看付款資訊
+        </button>
+      )}
+      <button type="button" onClick={() => handleCopyText(item)}
+        className="col-span-2 flex items-center justify-center gap-2 rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-3 text-sm font-bold text-emerald-700">
+        <Copy size={17} /> 一鍵複製付款回報
+      </button>
+    </div>
+  );
+
+  const paymentSummary = (item: PaymentInfo, method?: string) => (
+    <div className="mt-3 space-y-1 border-t border-gray-100 pt-3 text-sm">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-gray-500">應繳金額</span>
+        <span className="font-bold text-gray-900">{formatMoney(item.amount)}</span>
+      </div>
+      {method && <div className="flex items-center justify-between gap-2"><span className="text-gray-500">付款方式</span><span className="font-medium text-gray-700">{method === 'onsite' ? '現場付款' : method === 'online' ? '線上掃碼付款' : method}</span></div>}
+      <div className="flex items-start justify-between gap-2 text-xs">
+        <span className="shrink-0 text-gray-400">預約識別碼</span>
+        <span className="break-all text-right text-gray-500">{item.reference}</span>
+      </div>
+    </div>
+  );
 
   return (
-    <main className="w-full min-h-screen max-w-md mx-auto bg-gray-50 flex flex-col pb-10 relative">
+    <main className="w-full min-h-screen max-w-md mx-auto bg-gray-50 flex flex-col pb-10 relative overflow-x-clip">
       {/* 修正：加入 justify-center 與 absolute 定位，確保標題完美置中且寬度填滿 */}
       <header className="w-full text-white py-4 px-4 flex items-center justify-center shadow-md bg-gray-800 relative z-10">
         <Link href="/" className="absolute left-4 p-2 rounded-full bg-white/10 transition hover:bg-white/20 active:scale-95">
@@ -309,6 +395,12 @@ export default function MyBookingsPage() {
                           </p>
                           <p className="text-xs text-gray-400 mt-1">共計 {b.ids.length * 0.5} 小時</p>
                         </div>
+                        {b.status === 'booked' && (
+                          <>
+                            {paymentSummary(getCourtPayment(b), b.payment_method)}
+                            {b.payment_method !== 'onsite' && paymentButtons(getCourtPayment(b))}
+                          </>
+                        )}
 
                         {b.status === 'booked' && (
                           isCancellable(b.booking_date, b.start_time) ? (
@@ -353,10 +445,10 @@ export default function MyBookingsPage() {
                           <h3 className="font-bold text-gray-800 min-w-0 break-words">{session?.title}</h3>
                           <span
                             className={`text-xs px-2 py-1 rounded font-bold shrink-0 ${b.status === 'registered'
-                                ? 'bg-blue-100 text-blue-700'
-                                : b.status === 'waitlisted'
-                                  ? 'bg-amber-100 text-amber-700'
-                                  : 'bg-gray-100 text-gray-500'
+                              ? 'bg-blue-100 text-blue-700'
+                              : b.status === 'waitlisted'
+                                ? 'bg-amber-100 text-amber-700'
+                                : 'bg-gray-100 text-gray-500'
                               }`}
                           >
                             {b.status === 'registered' ? '正取' : b.status === 'waitlisted' ? '候補' : '已取消'}
@@ -372,20 +464,10 @@ export default function MyBookingsPage() {
                           </p>
 
                           {b.status === 'registered' && (
-                            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between bg-blue-50 p-2.5 rounded-lg border border-blue-100 min-w-0">
-                              <div>
-                                <p className="text-xs text-blue-900 font-bold">
-                                  💳 應繳金額：${session?.price}
-                                </p>
-                                <p className="text-[11px] text-blue-600 mt-0.5">線上付款 (支援 LINE Pay / TWQR)</p>
-                              </div>
-                              <button
-                                onClick={() => setActivePaymentModal(b)}
-                                className="bg-blue-600 text-white text-xs font-bold px-3 py-2 rounded-lg shadow-sm flex items-center justify-center gap-1 active:scale-95 transition w-full sm:w-auto"
-                              >
-                                <QrCode size={14} /> 查看付款 QR Code
-                              </button>
-                            </div>
+                            <>
+                              {paymentSummary(getPlayPayment(b))}
+                              {paymentButtons(getPlayPayment(b))}
+                            </>
                           )}
 
                           {b.status !== 'cancelled' && (
@@ -493,6 +575,12 @@ export default function MyBookingsPage() {
                           </p>
                           <p>🧑‍🏫 教練: {cls?.coach}</p>
                         </div>
+                        {b.status === 'booked' && (
+                          <>
+                            {paymentSummary(getClassPayment(b))}
+                            {paymentButtons(getClassPayment(b))}
+                          </>
+                        )}
 
                         {b.status === 'booked' && (
                           isCancellable(cls?.class_date, cls?.start_time) ? (
@@ -525,52 +613,37 @@ export default function MyBookingsPage() {
         ) : null}
       </div>
 
-      {activePaymentModal && paymentSession && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 animate-in fade-in overflow-y-auto pt-10 pb-10">
-          <div className="bg-white rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl animate-in zoom-in-95 my-auto">
-            <div className="p-5 text-center bg-blue-600">
-              <QrCode size={48} className="mx-auto text-white mb-2" />
-              <h2 className="text-xl font-bold text-white">線上付款資訊</h2>
-              <p className="text-white/90 text-sm mt-1">{paymentSession.title}</p>
+      {activePaymentModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/60 px-4 py-6">
+          <div role="dialog" aria-modal="true" aria-label="付款資訊"
+            className="my-auto w-full max-w-sm max-h-[calc(100dvh-3rem)] overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl">
+            <div className="mb-4 flex items-center justify-between gap-2">
+              <h2 className="text-lg font-bold text-gray-900">付款資訊</h2>
+              <button type="button" aria-label="關閉" onClick={() => setActivePaymentModal(null)} className="rounded-lg p-2 text-gray-500"><XCircle size={22} /></button>
             </div>
-
-            <div className="p-6 space-y-3">
-              <div className="bg-gray-100 rounded-xl aspect-square flex flex-col items-center justify-center border-2 border-dashed border-gray-300 p-4 mb-2">
-                <QrCode size={48} className="text-gray-400 mb-2" />
-                <p className="text-sm text-gray-500 font-bold">請於此處放置館方的</p>
-                <p className="text-sm text-gray-500 font-bold">LINE Pay / TWQR 條碼圖</p>
-              </div>
-
-              <div className="bg-blue-50 border border-blue-200 p-3 rounded-lg text-sm text-blue-800 text-center mb-2">
-                應繳金額：
-                <span className="font-bold text-lg text-blue-600">
-                  ${paymentSession.price}
-                </span>
-              </div>
-
-              <button
-                onClick={() => handleCopyText(activePaymentModal)}
-                className="w-full flex items-center justify-center gap-2 bg-blue-600 text-white font-bold py-3.5 rounded-xl shadow-md active:scale-95 transition"
-              >
-                <Copy size={18} /> 一鍵複製回報訊息
-              </button>
-
-              <a
-                href={lineUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="w-full flex items-center justify-center gap-2 bg-[#06C755] text-white font-bold py-3.5 rounded-xl shadow-md active:scale-95 transition"
-              >
-                <MessageCircle size={18} /> 前往官方 LINE 回報
+            <div className="rounded-xl bg-blue-50 p-4">
+              <p className="font-bold text-gray-900 break-words">{activePaymentModal.title}</p>
+              <p className="mt-1 text-sm text-gray-600">{activePaymentModal.date}　{activePaymentModal.start}–{activePaymentModal.end}</p>
+              <p className="mt-2 text-xl font-bold text-blue-700">{formatMoney(activePaymentModal.amount)}</p>
+            </div>
+            <div className="my-4 rounded-xl border border-dashed border-gray-300 bg-gray-50 px-4 py-10 text-center">
+              <QrCode size={44} className="mx-auto text-gray-400" />
+              <p className="mt-3 text-sm font-bold text-gray-600">尚未設定實際付款 QR Code</p>
+              <p className="mt-1 text-xs text-gray-500">此處保留付款圖片位置；請先確認館方的 QR Code 圖片來源。</p>
+            </div>
+            <button type="button" onClick={() => handleCopyText(activePaymentModal)}
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 py-3.5 text-sm font-bold text-white">
+              <Copy size={17} /> 一鍵複製付款回報
+            </button>
+            {lineUrl && lineUrl !== 'https://lin.ee/your_line_id' ? (
+              <a href={lineUrl} target="_blank" rel="noopener noreferrer"
+                className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border border-emerald-500 bg-emerald-50 py-3.5 text-sm font-bold text-emerald-700">
+                <MessageCircle size={17} /> 前往官方 LINE 回報
               </a>
-
-              <button
-                onClick={() => setActivePaymentModal(null)}
-                className="w-full text-gray-500 font-bold py-2 hover:text-gray-800 mt-2"
-              >
-                關閉視窗
-              </button>
-            </div>
+            ) : (
+              <p className="mt-3 text-center text-xs text-amber-700">官方 LINE 尚未設定，請聯繫館方。</p>
+            )}
+            <p className="mt-3 text-center text-xs text-gray-500">複製回報訊息不代表付款已確認，請等待館方核對。</p>
           </div>
         </div>
       )}
