@@ -145,12 +145,25 @@ export default function BookingPage() {
     fetchBookings();
   }, [fetchBookings]);
 
+  // 每次只能選取連續的半小時時段，避免誤將未選時段一併預約。
+  const areSlotsContinuous = (slots: string[]) => {
+    const sorted = [...slots].sort((a, b) => timeToMins(a) - timeToMins(b));
+    return sorted.every((slot, index) =>
+      index === 0 || timeToMins(slot) - timeToMins(sorted[index - 1]) === 30
+    );
+  };
+
   const toggleSlot = (time: string) => {
-    if (selectedSlots.includes(time)) {
-      setSelectedSlots(selectedSlots.filter((t) => t !== time));
-    } else {
-      setSelectedSlots([...selectedSlots, time].sort());
+    const nextSlots = selectedSlots.includes(time)
+      ? selectedSlots.filter((slot) => slot !== time)
+      : [...selectedSlots, time];
+
+    if (!areSlotsContinuous(nextSlots)) {
+      alert("⚠️ 請選擇連續的預約時段。若需要分開的時段，請分別預約。\n例如：18:00、18:30、19:00。");
+      return;
     }
+
+    setSelectedSlots(nextSlots.sort((a, b) => timeToMins(a) - timeToMins(b)));
   };
 
   const isSlotExpired = (dateStr: string, timeSlot: string) => {
@@ -196,6 +209,10 @@ export default function BookingPage() {
     e.preventDefault();
     if (selectedSlots.length === 0 || !name.trim() || !phone.trim() || !selectedCourt) {
       return alert("請填寫完整資訊！");
+    }
+    if (!areSlotsContinuous(selectedSlots)) {
+      alert("⚠️ 預約時段必須連續，請重新選擇！");
+      return;
     }
     setIsSubmitting(true);
 
@@ -296,7 +313,7 @@ export default function BookingPage() {
   };
 
   return (
-    <main className="min-h-screen max-w-md mx-auto bg-gray-50 flex flex-col relative pb-32">
+    <main className="min-h-screen w-full max-w-md mx-auto bg-gray-50 flex flex-col relative pb-32 overflow-x-clip">
       <header className="bg-emerald-600 text-white p-4 flex items-center shadow-md relative z-10">
         <Link href="/" className="mr-4 hover:bg-emerald-700 p-2 rounded-full transition">
           <ArrowLeft size={24} />
@@ -416,7 +433,7 @@ export default function BookingPage() {
                   type="text"
                   required
                   placeholder="姓名 / 暱稱"
-                  className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  className="w-full min-w-0 bg-white text-gray-900 border border-gray-300 rounded-lg p-3 text-base focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
                   value={name}
                   onChange={(e) => setName(e.target.value)}
@@ -426,7 +443,7 @@ export default function BookingPage() {
                   required
                   placeholder="手機號碼 (例如: 0912345678)"
                   pattern="[0-9]{10}"
-                  className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  className="w-full min-w-0 bg-white text-gray-900 border border-gray-300 rounded-lg p-3 text-base focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
@@ -470,8 +487,8 @@ export default function BookingPage() {
 
       {/* 預約成功付款 Modal */}
       {bookingResult && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 animate-in fade-in overflow-y-auto pt-10 pb-10">
-          <div className="bg-white rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl animate-in zoom-in-95 my-auto">
+        <div className="fixed inset-0 z-50 w-full max-w-full flex items-center justify-center bg-black/60 px-4 py-6 overflow-x-hidden overflow-y-auto overscroll-contain">
+          <div className="bg-white rounded-2xl w-full min-w-0 max-w-sm max-h-[calc(100dvh-3rem)] overflow-x-hidden overflow-y-auto shadow-2xl my-auto">
             <div className="p-5 text-center bg-emerald-600">
               <CheckCircle2 size={48} className="mx-auto text-white mb-2" />
               <h2 className="text-xl font-bold text-white">預約成功！</h2>
