@@ -26,7 +26,8 @@ import {
   Eye,
   MousePointerClick,
   CalendarPlus,
-  Users
+  Users,
+  Filter
 } from "lucide-react";
 
 const getLocalYYYYMMDD = (d: Date) => {
@@ -46,7 +47,6 @@ export default function AdminPage() {
 
   const [courtsList, setCourtsList] = useState<any[]>([]);
   const [courtBookings, setCourtBookings] = useState<any[]>([]);
-  // 🌟 新增：保存未合併的原始場地資料，專供營收與報表計算使用，保證不漏單
   const [rawCourtBookings, setRawCourtBookings] = useState<any[]>([]);
   const [classesList, setClassesList] = useState<any[]>([]);
   const [openPlaySessions, setOpenPlaySessions] = useState<any[]>([]);
@@ -113,6 +113,7 @@ export default function AdminPage() {
   const [agentNotes, setAgentNotes] = useState("");
   const [isAgentSubmitting, setIsAgentSubmitting] = useState(false);
 
+  // 歷史查詢專用 State
   const [historyType, setHistoryType] = useState<'all' | 'courts' | 'open_plays' | 'classes'>('all');
   const [historyStartDate, setHistoryStartDate] = useState(() => {
     const d = new Date(); d.setDate(d.getDate() - 30); return getLocalYYYYMMDD(d);
@@ -120,6 +121,9 @@ export default function AdminPage() {
   const [historyEndDate, setHistoryEndDate] = useState(() => getLocalYYYYMMDD(new Date()));
   const [historyResults, setHistoryResults] = useState<any[]>([]);
   const [isFetchingHistory, setIsFetchingHistory] = useState(false);
+
+  // 🌟 對帳專用開關：只顯示待收款
+  const [historyShowUnpaidOnly, setHistoryShowUnpaidOnly] = useState(false);
 
   const [newClass, setNewClass] = useState({
     title: '', coach: '', class_date: '', start_time: '14:00', end_time: '16:00', price: 800, max_players: 4, court_id: '', notes: '',
@@ -180,28 +184,31 @@ export default function AdminPage() {
 
   const getFetchLimitDateStr = useCallback(() => {
     const now = new Date();
+    now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
 
     if (activeTab === 'dashboard') {
-      if (dateFilter === 'today') return getLocalYYYYMMDD(now);
-      if (dateFilter === 'week') {
+      if (dateFilter === 'today') {
+        return now.toISOString().split("T")[0];
+      } else if (dateFilter === 'week') {
         const startOfWeek = new Date(now);
         const day = startOfWeek.getDay();
         const diff = startOfWeek.getDate() - day + (day === 0 ? -6 : 1);
         startOfWeek.setDate(diff);
-        return getLocalYYYYMMDD(startOfWeek);
-      }
-      if (dateFilter === 'month') {
-        return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
-      }
-      if (dateFilter === 'custom') {
+        return startOfWeek.toISOString().split("T")[0];
+      } else if (dateFilter === 'month') {
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        startOfMonth.setMinutes(startOfMonth.getMinutes() - startOfMonth.getTimezoneOffset());
+        return startOfMonth.toISOString().split("T")[0];
+      } else if (dateFilter === 'custom') {
         return customStartDate;
       }
     }
 
     const defaultLimit = new Date(now);
     defaultLimit.setDate(defaultLimit.getDate() - 7);
-    return getLocalYYYYMMDD(defaultLimit);
+    return defaultLimit.toISOString().split("T")[0];
   }, [activeTab, dateFilter, customStartDate]);
+
 
   const fetchAllData = useCallback(async () => {
     if (!isAuthenticated) return;
@@ -228,7 +235,6 @@ export default function AdminPage() {
       .order("start_time", { ascending: true });
 
     if (courtsData) {
-      // 🌟 將最原始乾淨的資料存起來，供營收計算用
       setRawCourtBookings(courtsData);
 
       const groupedCourts = [];
@@ -282,6 +288,7 @@ export default function AdminPage() {
     fetchAllData();
   }, [activeTab, dateFilter, customStartDate, customEndDate, fetchAllData]);
 
+  // 🌟 歷史查詢邏輯
   const fetchHistoryData = async () => {
     setIsFetchingHistory(true);
     setHistoryResults([]);
@@ -326,7 +333,7 @@ export default function AdminPage() {
       if (historyType === 'all' || historyType === 'open_plays') {
         const { data } = await supabase
           .from("open_play_sessions")
-          .select(`*, courts(name), open_play_players (id, status, payment_status, payment_method, users (name, phone))`)
+          .select(`*, courts(name), open_play_players (id, status, payment_status, payment_method, player_notes, users (name, phone))`)
           .gte("session_date", historyStartDate)
           .lte("session_date", historyEndDate);
         if (data) {
@@ -337,7 +344,7 @@ export default function AdminPage() {
       if (historyType === 'all' || historyType === 'classes') {
         const { data } = await supabase
           .from("classes")
-          .select(`*, courts(name), class_bookings (id, status, payment_status, payment_method, users (name, phone))`)
+          .select(`*, courts(name), class_bookings (id, status, payment_status, payment_method, notes, need_paddle, users (name, phone))`)
           .gte("class_date", historyStartDate)
           .lte("class_date", historyEndDate);
         if (data) {
@@ -537,7 +544,6 @@ export default function AdminPage() {
         });
       }
     });
-    // 這裡同樣使用 rawCourtBookings 來計算今日簽到，避免合併時遺漏
     rawCourtBookings.forEach((b) => {
       if (b.booking_date === todayStr && b.status === "booked") {
         list.push({ id: b.id, ids: [b.id], tableName: "court_bookings", type: "場地", title: b.courts?.name || "球場", time: `${b.start_time?.slice(0, 5)} - ${b.end_time?.slice(0, 5)}`, name: b.users?.name || "未填寫", phone: b.users?.phone || "", price: b.price || 250, paymentStatus: b.payment_status, paymentMethod: b.payment_method, isCheckedIn: !!b.is_checked_in, notes: `0.5h` });
@@ -598,7 +604,6 @@ export default function AdminPage() {
     let courtRev = 0; let openPlayRev = 0; let classRev = 0;
     let courtPendingCount = 0; let openPlayPendingCount = 0; let classPendingCount = 0;
 
-    // 🌟 改用 rawCourtBookings 計算，確保每一筆半小時的預約金額都被精準累加
     rawCourtBookings.forEach((b) => {
       if (b.status === 'booked' && isInDateRange(b.booking_date)) {
         const amt = b.price || 250;
@@ -639,11 +644,44 @@ export default function AdminPage() {
 
   const metrics = calculateMetrics();
 
+  // 🌟 對帳相關 Toggle，更新後同步刷新歷史資料
+  const handleToggleCourtPayment = async (ids: string[], currentStatus: string) => {
+    const nextStatus = currentStatus === 'paid' ? 'unpaid' : 'paid';
+    const { error } = await supabase.from("court_bookings").update({ payment_status: nextStatus }).in("id", ids);
+    if (error) {
+      alert("場地付款狀態更新失敗：" + error.message);
+      return;
+    }
+    fetchAllData();
+    if (activeTab === 'history') fetchHistoryData();
+  };
+
+  const handleToggleClassPayment = async (bookingId: string, currentStatus: string) => {
+    const nextStatus = currentStatus === 'paid' ? 'unpaid' : 'paid';
+    const { error } = await supabase.from("class_bookings").update({ payment_status: nextStatus }).eq("id", bookingId);
+    if (error) {
+      alert("課程付款狀態更新失敗：" + error.message);
+      return;
+    }
+    fetchAllData();
+    if (activeTab === 'history') fetchHistoryData();
+  };
+
+  const handleToggleOpenPlayPayment = async (playerId: string, currentStatus: string) => {
+    const nextStatus = currentStatus === 'paid' ? 'unpaid' : 'paid';
+    const { error } = await supabase.from("open_play_players").update({ payment_status: nextStatus }).eq("id", playerId);
+    if (error) {
+      alert("臨打付款狀態更新失敗：" + error.message);
+      return;
+    }
+    fetchAllData();
+    if (activeTab === 'history') fetchHistoryData();
+  };
+
   const handleExportCSV = () => {
     const csvRows = [];
     csvRows.push(["日期", "類別", "項目名稱", "姓名", "電話", "付款方式", "金額", "收款狀態"]);
 
-    // 🌟 報表也改用 rawCourtBookings 匯出
     rawCourtBookings.forEach((b) => {
       if (b.status === 'booked' && isInDateRange(b.booking_date)) {
         csvRows.push([b.booking_date, "場地租借", `${b.courts?.name} (${b.start_time?.slice(0, 5)}-${b.end_time?.slice(0, 5)})`, b.users?.name || '', b.users?.phone || '', b.payment_method === 'online' ? '線上付款' : '現場付款', b.price || 250, b.payment_status === 'paid' ? '已收款' : '待收款']);
@@ -667,7 +705,11 @@ export default function AdminPage() {
         });
       }
     });
-    const csvContent = "\uFEFF" + csvRows.map((e) => e.map((val) => `"${val}"`).join(",")).join("\n");
+    const csvContent = "\uFEFF" + csvRows.map((row) => row.map((value) => {
+      const raw = String(value ?? "");
+      const safe = /^[\s]*[=+@\-]/.test(raw) && typeof value === "string" ? "'" + raw : raw;
+      return `"${safe.replace(/"/g, '""')}"`;
+    }).join(",")).join("\n");
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -727,31 +769,17 @@ export default function AdminPage() {
       }
     });
 
-    const csvContent = "\uFEFF" + csvRows.map((e) => e.map((val) => `"${val}"`).join(",")).join("\n");
+    const csvContent = "\uFEFF" + csvRows.map((row) => row.map((value) => {
+      const raw = String(value ?? "");
+      const safe = /^[\s]*[=+@\-]/.test(raw) && typeof value === "string" ? "'" + raw : raw;
+      return `"${safe.replace(/"/g, '""')}"`;
+    }).join(",")).join("\n");
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.setAttribute("href", url);
     link.setAttribute("download", `history_report_${historyStartDate}_to_${historyEndDate}.csv`);
     document.body.appendChild(link); link.click(); document.body.removeChild(link);
-  };
-
-  const handleToggleCourtPayment = async (ids: string[], currentStatus: string) => {
-    const nextStatus = currentStatus === 'paid' ? 'unpaid' : 'paid';
-    await supabase.from("court_bookings").update({ payment_status: nextStatus }).in("id", ids);
-    fetchAllData();
-  };
-
-  const handleToggleClassPayment = async (bookingId: string, currentStatus: string) => {
-    const nextStatus = currentStatus === 'paid' ? 'unpaid' : 'paid';
-    await supabase.from("class_bookings").update({ payment_status: nextStatus }).eq("id", bookingId);
-    fetchAllData();
-  };
-
-  const handleToggleOpenPlayPayment = async (playerId: string, currentStatus: string) => {
-    const nextStatus = currentStatus === 'paid' ? 'unpaid' : 'paid';
-    await supabase.from("open_play_players").update({ payment_status: nextStatus }).eq("id", playerId);
-    fetchAllData();
   };
 
   const handleCancelCourt = async (targetId: string | string[]) => {
@@ -764,14 +792,22 @@ export default function AdminPage() {
   const handleToggleCourtStatus = async (courtId: number, currentStatus: string) => {
     const nextStatus = currentStatus === 'active' ? 'maintenance' : 'active';
     if (!confirm(nextStatus === 'maintenance' ? '確定要將此場地設為「維修中」嗎？(前台將無法預約)' : '確定要重新開放此場地嗎？')) return;
-    await supabase.from("courts").update({ status: nextStatus }).eq("id", courtId);
+    const { error } = await supabase.from("courts").update({ status: nextStatus }).eq("id", courtId);
+    if (error) {
+      alert("場地狀態更新失敗：" + error.message);
+      return;
+    }
     fetchAllData();
   };
 
   const submitNewClass = async (e: React.FormEvent) => {
     e.preventDefault();
     const payload = { ...newClass, status: 'open', court_id: newClass.court_id === '' ? null : newClass.court_id };
-    await supabase.from("classes").insert([payload]);
+    const { error } = await supabase.from("classes").insert([payload]);
+    if (error) {
+      alert("新增課程失敗：" + error.message);
+      return;
+    }
     alert("🎉 課程新增成功！");
     setIsAddingClass(false);
     setNewClass({ title: '', coach: '', class_date: '', start_time: '14:00', end_time: '16:00', price: 800, max_players: 4, court_id: '', notes: '' });
@@ -781,7 +817,11 @@ export default function AdminPage() {
   const submitEditClass = async (e: React.FormEvent) => {
     e.preventDefault();
     const payload = { ...editClass, court_id: editClass.court_id === '' ? null : editClass.court_id };
-    await supabase.from("classes").update(payload).eq("id", editingClassId);
+    const { error } = await supabase.from("classes").update(payload).eq("id", editingClassId);
+    if (error) {
+      alert("修改課程失敗：" + error.message);
+      return;
+    }
     alert("✏️ 課程修改成功！");
     setEditingClassId(null);
     fetchAllData();
@@ -988,19 +1028,23 @@ export default function AdminPage() {
         ) : (
           <>
             {/* ========================================================================= */}
-            {/* 📜 歷史紀錄調閱分頁 */}
+            {/* 📜 歷史紀錄調閱分頁 (對帳神器版) */}
             {/* ========================================================================= */}
             {activeTab === 'history' && (
               <div className="space-y-4 animate-in fade-in pb-10">
                 <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-200 space-y-3">
-                  <h3 className="text-sm font-bold text-gray-800 flex items-center gap-1.5">
-                    <Calendar size={18} className="text-gray-600" /> 歷史紀錄調閱
-                  </h3>
+                  <div className="flex justify-between items-center">
+                    <h3 className="text-sm font-bold text-gray-800 flex items-center gap-1.5">
+                      <Calendar size={18} className="text-gray-600" /> 歷史紀錄調閱
+                    </h3>
+                  </div>
+
                   <div className="flex gap-2">
                     <input type="date" value={historyStartDate} onChange={(e) => setHistoryStartDate(e.target.value)} className="flex-1 bg-gray-50 border p-2 rounded-lg text-xs" style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }} />
                     <span className="self-center text-gray-500 font-bold">~</span>
                     <input type="date" value={historyEndDate} onChange={(e) => setHistoryEndDate(e.target.value)} className="flex-1 bg-gray-50 border p-2 rounded-lg text-xs" style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }} />
                   </div>
+
                   <div className="flex gap-2">
                     <select value={historyType} onChange={(e) => setHistoryType(e.target.value as any)} className="flex-1 bg-gray-50 border p-2 rounded-lg text-xs font-bold" style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}>
                       <option value="all">全部</option>
@@ -1013,6 +1057,19 @@ export default function AdminPage() {
                     </button>
                   </div>
 
+                  {/* 🌟 快速對帳過濾器 */}
+                  <div className="flex justify-between items-center bg-gray-50 p-2 rounded-lg border border-gray-200">
+                    <label className="flex items-center gap-2 text-xs font-bold text-gray-700 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={historyShowUnpaidOnly}
+                        onChange={(e) => setHistoryShowUnpaidOnly(e.target.checked)}
+                        className="accent-indigo-600 w-4 h-4 rounded"
+                      />
+                      <Filter size={14} className="text-indigo-600" /> 只顯示含有「待收款」的場次
+                    </label>
+                  </div>
+
                   <button
                     onClick={handleExportHistoryCSV}
                     className="w-full flex items-center justify-center gap-2 bg-indigo-600 text-white font-bold py-3 rounded-xl shadow-sm hover:bg-indigo-700 transition active:scale-95 text-sm mt-3"
@@ -1021,64 +1078,153 @@ export default function AdminPage() {
                   </button>
                 </div>
 
-                <div className="space-y-3">
+                <div className="space-y-4">
                   {!isFetchingHistory && historyResults.length === 0 ? (
                     <p className="text-center text-xs text-gray-400 py-5">無符合條件的歷史紀錄</p>
                   ) : (
-                    historyResults.map((item) => {
+                    historyResults.filter((item) => {
+                      if (!historyShowUnpaidOnly) return true;
+                      if (item._itemType === 'courts') return item.payment_status === 'unpaid';
+                      const bookings = item._itemType === 'classes' ? item.class_bookings : item.open_play_players;
+                      return bookings?.some((b: any) => b.status !== 'cancelled' && b.payment_status === 'unpaid');
+                    }).map((item) => {
+
+                      // 🌟 針對「課程與臨打」的財務計算
                       if (item._itemType === 'open_plays' || item._itemType === 'classes') {
                         const isClass = item._itemType === 'classes';
                         const dateField = isClass ? item.class_date : item.session_date;
                         const bookings = isClass ? item.class_bookings : item.open_play_players;
-                        const activeCount = bookings?.filter((b: any) => b.status !== 'cancelled').length || 0;
+                        const activeBookings = bookings?.filter((b: any) => b.status !== 'cancelled') || [];
+                        const activeCount = activeBookings.length;
+
+                        const maxPlayers = item.max_players || 0;
+                        const capacityPct = maxPlayers > 0 ? Math.round((activeCount / maxPlayers) * 100) : 0;
+                        const price = item.price || 0;
+                        const totalExpected = activeCount * price;
+
+                        let collectedCash = 0;
+                        let collectedOnline = 0;
+                        let unpaidAmount = 0;
+
+                        activeBookings.forEach((b: any) => {
+                          if (b.payment_status === 'paid') {
+                            if (b.payment_method === 'online') collectedOnline += price;
+                            else collectedCash += price;
+                          } else {
+                            unpaidAmount += price;
+                          }
+                        });
+
+                        const collectedTotal = collectedCash + collectedOnline;
+
                         return (
-                          <div key={item._itemType + item.id} className="bg-white p-3 rounded-xl border shadow-sm">
-                            <div className="flex justify-between items-start border-b pb-2 mb-2">
+                          <div key={item._itemType + item.id} className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm">
+                            <div className="flex justify-between items-start">
                               <div>
                                 <div className="flex items-center gap-1.5 mb-1">
                                   <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${isClass ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>
                                     {isClass ? '體驗課程' : '臨打活動'}
                                   </span>
+                                  <span className="text-[10px] text-gray-500 font-bold">{item.courts?.name || '未定'}</span>
                                 </div>
-                                <p className="text-sm font-bold text-gray-800">{item.title}</p>
-                                <p className="text-xs text-gray-500">{dateField} | {item.start_time?.slice(0, 5)}-{item.end_time?.slice(0, 5)}</p>
-                              </div>
-                              <div className="text-right text-xs">
-                                <p className="font-bold text-gray-800">報名人數: {activeCount}</p>
-                                <p className="text-gray-500">{item.courts?.name}</p>
+                                <h3 className="font-bold text-gray-800 text-base">{item.title}</h3>
+                                <p className="text-xs text-gray-500 mt-0.5">{dateField} | {item.start_time?.slice(0, 5)}-{item.end_time?.slice(0, 5)}</p>
                               </div>
                             </div>
-                            <div className="space-y-1 max-h-32 overflow-y-auto pr-1">
-                              {bookings?.filter((b: any) => b.status !== 'cancelled').map((b: any) => (
-                                <div key={b.id} className="flex justify-between text-[11px] bg-gray-50 p-1.5 rounded">
-                                  <span className="font-bold text-gray-700">{b.users?.name} <span className="text-gray-400 font-normal">({b.users?.phone?.slice(-4)})</span></span>
-                                  <span className={b.payment_status === 'paid' ? 'text-emerald-600 font-bold' : 'text-amber-600 font-bold'}>
-                                    {b.payment_status === 'paid' ? '已收款' : '待收款'}
-                                  </span>
-                                </div>
-                              ))}
+
+                            {/* 財務與滿載率儀表板 */}
+                            <div className="mt-3 bg-indigo-50 border border-indigo-100 p-2.5 rounded-lg text-xs space-y-1">
+                              <div className="flex justify-between font-bold text-indigo-900 border-b border-indigo-100 pb-1 mb-1">
+                                <span>單價: ${price}/人</span>
+                                <span>報名: {activeCount}/{maxPlayers}人 (滿載率 {capacityPct}%)</span>
+                              </div>
+                              <div className="flex justify-between font-bold">
+                                <span>應收總額: ${totalExpected}</span>
+                                <span className="text-amber-600">待收: ${unpaidAmount}</span>
+                              </div>
+                              <div className="flex justify-between text-gray-600">
+                                <span>已收總額: <span className="text-emerald-600 font-bold">${collectedTotal}</span></span>
+                                <span>(現金 ${collectedCash} / 線上 ${collectedOnline})</span>
+                              </div>
+                            </div>
+
+                            {/* 參與名單與一鍵切換按鈕 */}
+                            <div className="mt-3 space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                              {activeBookings.map((b: any) => {
+                                const bNotes = isClass ? b.notes : b.player_notes;
+                                return (
+                                  <div key={b.id} className="flex justify-between items-center text-xs bg-gray-50 p-2 rounded-lg border border-gray-100">
+                                    <div className="flex-1 min-w-0 pr-2">
+                                      <div className="flex items-center gap-1.5 flex-wrap">
+                                        <span className="font-bold text-gray-800">{b.users?.name}</span>
+                                        <span className="text-gray-400 text-[10px]">({b.users?.phone?.slice(-4)})</span>
+                                        <span className="text-gray-500 font-bold text-[10px]">${price}</span>
+                                      </div>
+                                      {bNotes && (
+                                        <div className="mt-0.5 inline-block bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded text-[10px] font-bold truncate max-w-full">
+                                          ⚠️ 備註: {bNotes}
+                                        </div>
+                                      )}
+                                    </div>
+                                    <button
+                                      onClick={() => {
+                                        if (isClass) handleToggleClassPayment(b.id, b.payment_status);
+                                        else handleToggleOpenPlayPayment(b.id, b.payment_status);
+                                      }}
+                                      className={`text-[11px] font-bold px-3 py-1.5 rounded-lg border transition flex shrink-0 items-center justify-center gap-1 ${b.payment_status === "paid"
+                                          ? "bg-emerald-50 text-emerald-700 border-emerald-300"
+                                          : "bg-amber-50 text-amber-800 border-amber-300 shadow-sm"
+                                        }`}
+                                    >
+                                      <DollarSign size={12} />
+                                      {b.payment_status === "paid" ? "已收" : "待收"}
+                                    </button>
+                                  </div>
+                                );
+                              })}
                             </div>
                           </div>
                         )
                       } else {
+                        // 🌟 針對「場地租借」的財務計算
+                        const total = item.totalPrice || 250;
+                        const isPaid = item.payment_status === 'paid';
+
                         return (
-                          <div key={item._itemType + item.ids[0]} className="bg-white p-3 rounded-xl border shadow-sm">
+                          <div key={item._itemType + item.ids[0]} className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm">
                             <div className="flex justify-between items-start">
                               <div>
                                 <div className="flex items-center gap-1.5 mb-1">
                                   <span className="text-[10px] px-1.5 py-0.5 rounded font-bold bg-emerald-100 text-emerald-700">
                                     場地租借
                                   </span>
+                                  <span className="text-[10px] text-gray-500 font-bold">{item.courts?.name}</span>
                                 </div>
-                                <p className="text-sm font-bold text-gray-800">{item.courts?.name}</p>
-                                <p className="text-xs text-gray-500">{item.booking_date} | {item.start_time?.slice(0, 5)}-{item.end_time?.slice(0, 5)}</p>
-                                <p className="text-[11px] mt-1 font-bold text-gray-700">👤 {item.users?.name} ({item.users?.phone})</p>
+                                <h3 className="font-bold text-gray-800 text-base">{item.users?.name} <span className="text-sm font-normal text-gray-500">({item.users?.phone})</span></h3>
+                                <p className="text-xs text-gray-500 mt-0.5">{item.booking_date} | {item.start_time?.slice(0, 5)}-{item.end_time?.slice(0, 5)}</p>
                               </div>
-                              <div className="text-right">
-                                <p className={`text-[10px] font-bold px-2 py-0.5 rounded ${item.status === 'booked' ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
-                                  {item.status === 'booked' ? '已預約' : '已取消'}
-                                </p>
-                                <p className="text-sm font-bold mt-1 text-gray-800">${item.totalPrice}</p>
+                            </div>
+
+                            {/* 財務總結區塊 */}
+                            <div className="mt-3 bg-indigo-50 border border-indigo-100 p-2.5 rounded-lg text-xs space-y-1">
+                              <div className="flex justify-between font-bold text-indigo-900 border-b border-indigo-100 pb-1 mb-1">
+                                <span>計費時長: {item.ids.length * 0.5}h</span>
+                                <span>總應收: ${total}</span>
+                              </div>
+                              <div className="flex justify-between items-center mt-2">
+                                <span className="text-gray-600 font-bold flex items-center gap-1">
+                                  付款方式: {item.payment_method === 'online' ? '📱 線上' : '💵 現場'}
+                                </span>
+                                <button
+                                  onClick={() => handleToggleCourtPayment(item.ids, item.payment_status)}
+                                  className={`text-[11px] font-bold px-4 py-1.5 rounded-lg border transition flex items-center justify-center gap-1 ${isPaid
+                                      ? "bg-emerald-50 text-emerald-700 border-emerald-300"
+                                      : "bg-amber-50 text-amber-800 border-amber-300 shadow-sm"
+                                    }`}
+                                >
+                                  <DollarSign size={12} />
+                                  {isPaid ? "已收" : "待收"}
+                                </button>
                               </div>
                             </div>
                           </div>
@@ -1128,10 +1274,10 @@ export default function AdminPage() {
                             <div className="flex items-center gap-1.5">
                               <span
                                 className={`text-[10px] px-1.5 py-0.2 rounded font-bold ${item.type === "臨打"
-                                  ? "bg-blue-100 text-blue-700"
-                                  : item.type === "課程"
-                                    ? "bg-orange-100 text-orange-700"
-                                    : "bg-emerald-100 text-emerald-700"
+                                    ? "bg-blue-100 text-blue-700"
+                                    : item.type === "課程"
+                                      ? "bg-orange-100 text-orange-700"
+                                      : "bg-emerald-100 text-emerald-700"
                                   }`}
                               >
                                 {item.type}
@@ -1148,8 +1294,8 @@ export default function AdminPage() {
                             <button
                               onClick={() => handleToggleCheckIn(item.tableName, item.id)}
                               className={`text-[11px] font-bold w-14 py-1.5 rounded-lg border transition flex items-center justify-center ${item.isCheckedIn
-                                ? "bg-gray-800 text-white border-gray-900 shadow-sm"
-                                : "bg-gray-100 text-gray-600 border-gray-300 hover:bg-gray-200"
+                                  ? "bg-gray-800 text-white border-gray-900 shadow-sm"
+                                  : "bg-gray-100 text-gray-600 border-gray-300 hover:bg-gray-200"
                                 }`}
                             >
                               {item.isCheckedIn ? "已簽到" : "簽到"}
@@ -1162,8 +1308,8 @@ export default function AdminPage() {
                                 else handleToggleOpenPlayPayment(item.id, item.paymentStatus);
                               }}
                               className={`text-[11px] font-bold w-14 py-1.5 rounded-lg border transition flex items-center justify-center ${item.paymentStatus === "paid"
-                                ? "bg-emerald-50 text-emerald-700 border-emerald-300 shadow-sm"
-                                : "bg-amber-50 text-amber-800 border-amber-300 shadow-sm"
+                                  ? "bg-emerald-50 text-emerald-700 border-emerald-300 shadow-sm"
+                                  : "bg-amber-50 text-amber-800 border-amber-300 shadow-sm"
                                 }`}
                             >
                               {item.paymentStatus === "paid" ? "已收" : "未收"}
@@ -1366,8 +1512,8 @@ export default function AdminPage() {
                           <div className="flex items-center gap-2">
                             <span
                               className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${b.payment_method === 'online'
-                                ? 'bg-green-100 text-green-700'
-                                : 'bg-gray-200 text-gray-700'
+                                  ? 'bg-green-100 text-green-700'
+                                  : 'bg-gray-200 text-gray-700'
                                 }`}
                             >
                               {b.payment_method === 'online' ? '📱 線上付款' : '💵 現場付款'}
@@ -1398,8 +1544,8 @@ export default function AdminPage() {
                             <button
                               onClick={() => handleToggleCourtPayment(b.ids, b.payment_status)}
                               className={`flex-1 text-xs font-bold py-2 rounded-lg border transition flex items-center justify-center gap-1 ${b.payment_status === 'paid'
-                                ? 'bg-emerald-500 text-white border-emerald-600'
-                                : 'bg-amber-100 text-amber-800 border-amber-300'
+                                  ? 'bg-emerald-500 text-white border-emerald-600'
+                                  : 'bg-amber-100 text-amber-800 border-amber-300'
                                 }`}
                             >
                               <DollarSign size={14} />
@@ -1490,8 +1636,8 @@ export default function AdminPage() {
                                     key={c.id}
                                     onClick={() => toggleClassCellSelection(cellKey)}
                                     className={`border-b border-l p-1 cursor-pointer transition select-none ${isSelected
-                                      ? 'bg-orange-500 text-white font-bold'
-                                      : 'bg-green-50 text-green-700 hover:bg-green-200 font-medium'
+                                        ? 'bg-orange-500 text-white font-bold'
+                                        : 'bg-green-50 text-green-700 hover:bg-green-200 font-medium'
                                       }`}
                                   >
                                     {isSelected ? '已選' : '空檔'}
@@ -1839,8 +1985,8 @@ export default function AdminPage() {
 
                                     <span
                                       className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${booking.payment_method === 'online'
-                                        ? 'bg-green-100 text-green-700'
-                                        : 'bg-gray-200 text-gray-700'
+                                          ? 'bg-green-100 text-green-700'
+                                          : 'bg-gray-200 text-gray-700'
                                         }`}
                                     >
                                       {booking.payment_method === 'online' ? '📱 線上付款' : '💵 現場付款'}
@@ -1860,8 +2006,8 @@ export default function AdminPage() {
                                   <button
                                     onClick={() => handleToggleClassPayment(booking.id, booking.payment_status)}
                                     className={`text-xs font-bold px-2.5 py-1.5 rounded-lg border transition flex items-center gap-1 ${booking.payment_status === 'paid'
-                                      ? 'bg-emerald-500 text-white border-emerald-600'
-                                      : 'bg-amber-100 text-amber-800 border-amber-300'
+                                        ? 'bg-emerald-500 text-white border-emerald-600'
+                                        : 'bg-amber-100 text-amber-800 border-amber-300'
                                       }`}
                                   >
                                     <DollarSign size={14} />
@@ -1949,8 +2095,8 @@ export default function AdminPage() {
                                     key={c.id}
                                     onClick={() => toggleCellSelection(cellKey)}
                                     className={`border-b border-l p-1 cursor-pointer transition select-none ${isSelected
-                                      ? 'bg-blue-500 text-white font-bold'
-                                      : 'bg-green-50 text-green-700 hover:bg-green-200 font-medium'
+                                        ? 'bg-blue-500 text-white font-bold'
+                                        : 'bg-green-50 text-green-700 hover:bg-green-200 font-medium'
                                       }`}
                                   >
                                     {isSelected ? '已選' : '空檔'}
@@ -2365,8 +2511,8 @@ export default function AdminPage() {
                                   <div className="flex items-center gap-2 flex-wrap">
                                     <span
                                       className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${player.status === 'registered'
-                                        ? 'bg-blue-100 text-blue-700'
-                                        : 'bg-amber-100 text-amber-700'
+                                          ? 'bg-blue-100 text-blue-700'
+                                          : 'bg-amber-100 text-amber-700'
                                         }`}
                                     >
                                       {player.status === 'registered' ? '正取' : '候補'}
@@ -2376,8 +2522,8 @@ export default function AdminPage() {
 
                                     <span
                                       className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${player.payment_method === 'online'
-                                        ? 'bg-green-100 text-green-700'
-                                        : 'bg-gray-200 text-gray-700'
+                                          ? 'bg-green-100 text-green-700'
+                                          : 'bg-gray-200 text-gray-700'
                                         }`}
                                     >
                                       {player.payment_method === 'online' ? '📱 線上付款' : '💵 現場付款'}
@@ -2394,8 +2540,8 @@ export default function AdminPage() {
                                     <button
                                       onClick={() => handleToggleOpenPlayPayment(player.id, player.payment_status)}
                                       className={`text-xs font-bold px-2.5 py-1.5 rounded-lg border transition flex items-center gap-1 ${player.payment_status === 'paid'
-                                        ? 'bg-emerald-500 text-white border-emerald-600'
-                                        : 'bg-amber-100 text-amber-800 border-amber-300'
+                                          ? 'bg-emerald-500 text-white border-emerald-600'
+                                          : 'bg-amber-100 text-amber-800 border-amber-300'
                                         }`}
                                     >
                                       <DollarSign size={14} />
