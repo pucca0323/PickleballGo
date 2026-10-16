@@ -61,8 +61,8 @@ export default function BookingPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [bookingResult, setBookingResult] = useState<any | null>(null);
-  const [paymentMode, setPaymentMode] = useState<'online' | 'onsite'>('onsite');
-  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<'online' | 'onsite'>('onsite');
+  const [paymentMode, setPaymentMode] = useState<'select' | 'online' | 'onsite'>('select');
+  const [createdBookingIds, setCreatedBookingIds] = useState<number[]>([]);
   const [lineUrl, setLineUrl] = useState("https://lin.ee/your_line_id");
 
   useEffect(() => {
@@ -245,7 +245,6 @@ export default function BookingPage() {
         p_end_time: endTime,
         p_name: name.trim(),
         p_phone: phone.trim(),
-        p_payment_method: selectedPaymentMethod,
       });
 
       if (error) throw error;
@@ -257,6 +256,8 @@ export default function BookingPage() {
       }
 
       const serverPrice = data.price !== undefined ? data.price : displayTotalPrice;
+      const ids = data.booking_ids || [];
+      setCreatedBookingIds(ids);
 
       const currentCourt = courts.find((c) => String(c.id) === cleanCourtId);
       setBookingResult({
@@ -269,7 +270,7 @@ export default function BookingPage() {
         phone: phone.trim(),
       });
 
-      setPaymentMode(selectedPaymentMethod);
+      setPaymentMode('select');
       setSelectedSlots([]);
       setShowForm(false);
       setName("");
@@ -279,6 +280,16 @@ export default function BookingPage() {
       alert("預約失敗，錯誤：" + (error.message || "系統錯誤"));
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const updatePaymentMethod = async (method: 'online' | 'onsite') => {
+    setPaymentMode(method);
+    if (createdBookingIds.length > 0) {
+      await supabase
+        .from("court_bookings")
+        .update({ payment_method: method })
+        .in("id", createdBookingIds);
     }
   };
 
@@ -437,21 +448,6 @@ export default function BookingPage() {
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
                 />
-                <fieldset className="space-y-2">
-                  <legend className="text-sm font-bold text-gray-800">付款方式（確認預約前選擇）</legend>
-                  <label className="flex items-center gap-3 rounded-lg border border-gray-300 p-3 text-base text-gray-900">
-                    <input type="radio" name="bookingPayment" value="onsite"
-                      checked={selectedPaymentMethod === 'onsite'}
-                      onChange={() => setSelectedPaymentMethod('onsite')} />
-                    現場付款
-                  </label>
-                  <label className="flex items-center gap-3 rounded-lg border border-gray-300 p-3 text-base text-gray-900">
-                    <input type="radio" name="bookingPayment" value="online"
-                      checked={selectedPaymentMethod === 'online'}
-                      onChange={() => setSelectedPaymentMethod('online')} />
-                    線上掃碼（LINE Pay / TWQR）
-                  </label>
-                </fieldset>
                 <div className="flex gap-2 pt-2">
                   <button
                     type="button"
@@ -500,6 +496,24 @@ export default function BookingPage() {
             </div>
 
             <div className="p-6 space-y-4">
+              {paymentMode === 'select' && (
+                <>
+                  <h3 className="font-bold text-center text-gray-800 mb-2">請選擇付款方式</h3>
+                  <button
+                    onClick={() => updatePaymentMethod('online')}
+                    className="w-full flex items-center justify-center gap-2 bg-green-50 text-green-700 border-2 border-green-500 font-bold py-3.5 rounded-xl hover:bg-green-100 transition"
+                  >
+                    <QrCode size={20} /> 線上掃碼 (LINE Pay / TWQR)
+                  </button>
+                  <button
+                    onClick={() => updatePaymentMethod('onsite')}
+                    className="w-full flex items-center justify-center gap-2 bg-gray-50 text-gray-700 border-2 border-gray-300 font-bold py-3.5 rounded-xl hover:bg-gray-100 transition"
+                  >
+                    現場付款
+                  </button>
+                </>
+              )}
+
               {paymentMode === 'onsite' && (
                 <div className="text-center space-y-4">
                   <p className="text-gray-600 font-medium">
