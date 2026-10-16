@@ -21,6 +21,20 @@ export default function OpenPlayPage() {
   const [createdPlayerId, setCreatedPlayerId] = useState<number | null>(null);
   const [lineUrl, setLineUrl] = useState("https://lin.ee/your_line_id");
 
+  // 報名成功時，先收起手機鍵盤，再回到頁面頂端。
+  useEffect(() => {
+    if (!bookingResult) return;
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+    window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+  }, [bookingResult]);
+
+  const closeBookingResult = () => {
+    setBookingResult(null);
+    window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+  };
+
   const fetchData = async () => {
     // 1. 讀取官方 LINE 連結
     const { data: settingData } = await supabase
@@ -170,7 +184,7 @@ export default function OpenPlayPage() {
   const activeSessions = sessions.filter(session => !isSessionExpired(session.session_date, session.start_time));
 
   return (
-    <main className="w-full min-h-screen max-w-md mx-auto bg-gray-50 flex flex-col pb-10 relative">
+    <main className="w-full min-w-0 min-h-screen max-w-md mx-auto bg-gray-50 flex flex-col pb-10 relative max-sm:overflow-x-clip">
       {/* 🌟 修正：加入 shrink-0 防止下方內容變多時壓縮到標題高度 */}
       <header className="shrink-0 w-full text-white py-4 px-4 flex items-center justify-center shadow-md relative z-10" style={{ backgroundColor: "#2563eb" }}>
         <Link href="/" className="absolute left-4 p-2 rounded-full transition bg-white/15 hover:bg-white/25 active:scale-95">
@@ -179,7 +193,7 @@ export default function OpenPlayPage() {
         <h1 className="text-lg font-bold tracking-wide">臨打預約</h1>
       </header>
 
-      <div className="p-5 space-y-4">
+      <div className="p-5 space-y-4 min-w-0 max-sm:w-full max-sm:overflow-x-clip">
         {loading ? (
           <p className="text-center mt-10 font-bold animate-pulse text-gray-500">尋找臨打場次中...</p>
         ) : activeSessions.length === 0 ? (
@@ -199,25 +213,25 @@ export default function OpenPlayPage() {
               }) || [];
 
             return (
-              <div key={session.id} className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200">
-                <div className="flex justify-between items-start border-b pb-3 mb-3">
-                  <div>
+              <div key={session.id} className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200 max-sm:min-w-0 max-sm:max-w-full">
+                <div className="flex justify-between items-start border-b pb-3 mb-3 max-sm:min-w-0 max-sm:gap-2">
+                  <div className="max-sm:min-w-0 max-sm:flex-1">
                     <span className="text-xs px-2 py-1 rounded-md font-bold mb-2 inline-block bg-blue-100 text-blue-800">
                       DUPR {session.level}
                     </span>
-                    <h2 className="text-lg font-bold text-gray-800">{session.title}</h2>
-                    <p className="text-sm mt-1 text-gray-500">
+                    <h2 className="text-lg font-bold text-gray-800 max-sm:break-words">{session.title}</h2>
+                    <p className="text-sm mt-1 text-gray-500 max-sm:break-words">
                       {session.session_date} | {session.start_time?.slice(0, 5)} - {session.end_time?.slice(0, 5)}
                     </p>
                   </div>
-                  <div className="text-right">
+                  <div className="text-right max-sm:min-w-0 max-sm:max-w-[42%] max-sm:shrink-0">
                     <p className="font-bold text-lg text-blue-600">${session.price}</p>
-                    <p className="text-xs mt-1 text-gray-500">{getCourtNames(session)}</p>
+                    <p className="text-xs mt-1 text-gray-500 max-sm:break-words">{getCourtNames(session)}</p>
                   </div>
                 </div>
 
                 {session.notes && (
-                  <div className="mb-4 bg-blue-50 text-blue-800 text-xs px-3 py-2 rounded-lg border border-blue-100">
+                  <div className="mb-4 bg-blue-50 text-blue-800 text-xs px-3 py-2 rounded-lg border border-blue-100 max-sm:break-words">
                     <span className="font-bold">📝 館方備註：</span>{session.notes}
                   </div>
                 )}
@@ -245,14 +259,14 @@ export default function OpenPlayPage() {
                     <div className="space-y-2">
                       {activePlayers.map((player: any) => (
                         <div key={player.id} className="flex flex-col text-sm">
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 max-sm:min-w-0">
                             <span
                               className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${player.status === 'registered' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'
                                 }`}
                             >
                               {player.status === 'registered' ? '正取' : '候補'}
                             </span>
-                            <span className="font-semibold text-gray-700">{player.users?.name}</span>
+                            <span className="font-semibold text-gray-700 max-sm:min-w-0 max-sm:break-words">{player.users?.name}</span>
                           </div>
                           {player.player_notes && (
                             <p className="text-xs text-gray-500 ml-10 mt-0.5 break-words">💬 {player.player_notes}</p>
@@ -275,14 +289,14 @@ export default function OpenPlayPage() {
                 )}
 
                 {selectedSession?.id === session.id && (
-                  <div className="mt-4 p-4 rounded-xl border-2 animate-in fade-in bg-blue-50 border-blue-400">
+                  <div className="mt-4 p-4 rounded-xl border-2 animate-in fade-in bg-blue-50 border-blue-400 max-sm:min-w-0">
                     <h3 className="font-bold mb-3 text-sm text-blue-800">填寫臨打報名資料</h3>
                     <form onSubmit={(e) => handleBooking(e, session)} className="space-y-3">
                       <input
                         type="text"
                         required
                         placeholder="姓名 / 暱稱"
-                        className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        className="w-full min-w-0 bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm max-sm:text-base focus:outline-none focus:ring-1 focus:ring-blue-500"
                         style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
                         value={name}
                         onChange={(e) => setName(e.target.value)}
@@ -292,7 +306,7 @@ export default function OpenPlayPage() {
                         required
                         placeholder="手機號碼 (例如: 0912345678)"
                         pattern="[0-9]{10}"
-                        className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        className="w-full min-w-0 bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm max-sm:text-base focus:outline-none focus:ring-1 focus:ring-blue-500"
                         style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
                         value={phone}
                         onChange={(e) => setPhone(e.target.value)}
@@ -300,23 +314,23 @@ export default function OpenPlayPage() {
                       <input
                         type="text"
                         placeholder="個人備註 (例如：會晚半小時到)"
-                        className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        className="w-full min-w-0 bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm max-sm:text-base focus:outline-none focus:ring-1 focus:ring-blue-500"
                         style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
                         value={playerNotes}
                         onChange={(e) => setPlayerNotes(e.target.value)}
                       />
-                      <div className="flex gap-2 pt-1">
+                      <div className="flex gap-2 pt-1 max-sm:min-w-0">
                         <button
                           type="button"
                           onClick={() => setSelectedSession(null)}
-                          className="flex-1 bg-white border border-gray-300 font-bold py-2.5 rounded-lg text-sm text-gray-600"
+                          className="flex-1 min-w-0 bg-white border border-gray-300 font-bold py-2.5 rounded-lg text-sm text-gray-600"
                         >
                           取消
                         </button>
                         <button
                           type="submit"
                           disabled={isSubmitting}
-                          className="flex-1 text-white font-bold py-2.5 rounded-lg text-sm shadow-sm bg-blue-600 disabled:opacity-50"
+                          className="flex-1 min-w-0 text-white font-bold py-2.5 rounded-lg text-sm shadow-sm bg-blue-600 disabled:opacity-50"
                         >
                           {isSubmitting ? "送出中..." : "確認報名"}
                         </button>
@@ -331,17 +345,17 @@ export default function OpenPlayPage() {
       </div>
 
       {bookingResult && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 animate-in fade-in overflow-y-auto pt-10 pb-10">
-          <div className="bg-white rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl animate-in zoom-in-95 my-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 animate-in fade-in overflow-y-auto pt-10 pb-10 max-sm:items-start max-sm:py-4 max-sm:overscroll-contain">
+          <div className="bg-white rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl animate-in zoom-in-95 my-auto max-sm:min-w-0 max-sm:max-w-full max-sm:my-0 max-sm:max-h-[calc(100dvh-2rem)] max-sm:overflow-y-auto">
             <div className={`p-5 text-center ${bookingResult.status === 'registered' ? 'bg-blue-600' : 'bg-amber-500'}`}>
               <CheckCircle2 size={48} className="mx-auto text-white mb-2" />
               <h2 className="text-xl font-bold text-white">報名成功！</h2>
-              <p className="text-white/90 text-sm mt-1">
+              <p className="text-white/90 text-sm mt-1 max-sm:break-words">
                 您已取得【{bookingResult.status === 'registered' ? '正取' : '候補'}】名額
               </p>
             </div>
 
-            <div className="p-6">
+            <div className="p-6 max-sm:p-4 max-sm:min-w-0">
               {bookingResult.status === 'waitlisted' ? (
                 <div className="text-center space-y-4">
                   <p className="text-gray-600 font-medium">
@@ -349,7 +363,7 @@ export default function OpenPlayPage() {
                     若有正取球友取消，系統將自動遞補您的名額！
                   </p>
                   <button
-                    onClick={() => setBookingResult(null)}
+                    onClick={closeBookingResult}
                     className="w-full bg-gray-800 text-white font-bold py-3 rounded-xl"
                   >
                     我知道了
@@ -382,7 +396,7 @@ export default function OpenPlayPage() {
                         請於開打前 10 分鐘至櫃檯完成現金付款！
                       </p>
                       <button
-                        onClick={() => setBookingResult(null)}
+                        onClick={closeBookingResult}
                         className="w-full bg-gray-800 text-white font-bold py-3 rounded-xl"
                       >
                         完成
@@ -419,7 +433,7 @@ export default function OpenPlayPage() {
                       </a>
 
                       <button
-                        onClick={() => setBookingResult(null)}
+                        onClick={closeBookingResult}
                         className="w-full text-gray-500 font-bold py-2 hover:text-gray-800 mt-2"
                       >
                         關閉視窗
