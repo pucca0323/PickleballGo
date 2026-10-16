@@ -3,14 +3,14 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../../lib/supabase";
 import Link from "next/link";
-import { 
-  ArrowLeft, 
-  UserCircle, 
-  CheckCircle2, 
-  QrCode, 
-  Copy, 
+import {
+  ArrowLeft,
+  UserCircle,
+  CheckCircle2,
+  QrCode,
+  Copy,
   MessageCircle,
-  MapPin 
+  MapPin
 } from "lucide-react";
 
 const getRel = (obj: any) => (Array.isArray(obj) ? obj[0] : obj);
@@ -18,6 +18,7 @@ const getRel = (obj: any) => (Array.isArray(obj) ? obj[0] : obj);
 export default function ClassesPage() {
   const [classes, setClasses] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
 
   const [selectedClass, setSelectedClass] = useState<any | null>(null);
   const [name, setName] = useState("");
@@ -33,35 +34,45 @@ export default function ClassesPage() {
   const [lineUrl, setLineUrl] = useState("https://lin.ee/your_line_id");
 
   const fetchClasses = async () => {
-    const { data: settingData } = await supabase
-      .from("settings")
-      .select("value")
-      .eq("key", "line_url")
-      .maybeSingle();
+    setLoading(true);
+    setLoadError("");
+    try {
+      const { data: settingData } = await supabase
+        .from("settings")
+        .select("value")
+        .eq("key", "line_url")
+        .maybeSingle();
 
-    if (settingData?.value) {
-      setLineUrl(settingData.value);
-    }
+      if (settingData?.value) {
+        setLineUrl(settingData.value);
+      }
 
-    const { data, error } = await supabase
-      .from("classes")
-      .select(`
+      const { data, error } = await supabase
+        .from("classes")
+        .select(`
         *,
         courts (name),
         class_bookings (status)
       `)
-      .eq("status", "open")
-      .order("class_date", { ascending: true })
-      .order("start_time", { ascending: true });
+        .eq("status", "open")
+        .order("class_date", { ascending: true })
+        .order("start_time", { ascending: true });
 
-    if (!error && data) {
-      const formattedClasses = data.map((cls) => ({
-        ...cls,
-        enrolledCount: cls.class_bookings?.filter((b: any) => b.status === 'booked').length || 0,
-      }));
-      setClasses(formattedClasses);
+      if (error) throw error;
+      if (data) {
+        const formattedClasses = data.map((cls) => ({
+          ...cls,
+          enrolledCount: cls.class_bookings?.filter((b: any) => b.status === 'booked').length || 0,
+        }));
+        setClasses(formattedClasses);
+      }
+    } catch (error) {
+      console.error("讀取體驗課程失敗：", error);
+      setLoadError("課程資料讀取失敗，請檢查網路連線後重新嘗試。");
+      setClasses([]);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   useEffect(() => {
@@ -72,13 +83,13 @@ export default function ClassesPage() {
     if (!sessionDate || !startTime) return false;
     const now = new Date();
     const todayStr = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().split("T")[0];
-    
+
     if (sessionDate < todayStr) return true;
     if (sessionDate === todayStr) {
       const currentHours = now.getHours().toString().padStart(2, '0');
       const currentMins = now.getMinutes().toString().padStart(2, '0');
       const currentTimeStr = `${currentHours}:${currentMins}`;
-      
+
       const sessionStartTime = startTime.slice(0, 5);
       if (sessionStartTime <= currentTimeStr) return true;
     }
@@ -184,7 +195,7 @@ export default function ClassesPage() {
   const activeClasses = classes.filter(cls => !isSessionExpired(cls.class_date, cls.start_time));
 
   return (
-    <main className="w-full min-h-screen max-w-md mx-auto bg-gray-50 flex flex-col relative pb-10">
+    <main className="w-full min-w-0 min-h-screen max-w-md mx-auto bg-gray-50 flex flex-col relative pb-10 max-sm:overflow-x-clip">
       {/* 修正：加入 w-full 與 absolute 絕對置中 */}
       <header className="w-full text-white py-4 px-4 flex items-center justify-center shadow-md bg-orange-600 relative z-10">
         <Link href="/" className="absolute left-4 p-2 rounded-full transition bg-white/15 hover:bg-white/25 active:scale-95">
@@ -193,7 +204,7 @@ export default function ClassesPage() {
         <h1 className="text-lg font-bold tracking-wide">體驗 / 教學課</h1>
       </header>
 
-      <div className="p-5 space-y-4">
+      <div className="p-5 space-y-4 max-sm:min-w-0">
         {successMsg && (
           <div className="bg-orange-100 border border-orange-400 text-orange-800 px-4 py-3 rounded-xl flex items-center mb-4">
             <CheckCircle2 className="mr-2 shrink-0" />
@@ -203,6 +214,11 @@ export default function ClassesPage() {
 
         {loading ? (
           <p className="text-center mt-10 font-bold animate-pulse text-gray-500">尋找課程中...</p>
+        ) : loadError ? (
+          <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-5 text-center space-y-3">
+            <p className="text-sm font-medium text-red-700">{loadError}</p>
+            <button type="button" onClick={() => void fetchClasses()} className="rounded-lg bg-orange-600 px-4 py-2 text-sm font-bold text-white">重新讀取</button>
+          </div>
         ) : activeClasses.length === 0 ? (
           <p className="text-center mt-10 text-gray-500">目前沒有開放的課程</p>
         ) : (
@@ -211,10 +227,10 @@ export default function ClassesPage() {
             const courtName = getRel(cls.courts)?.name || "1號場地";
 
             return (
-              <div key={cls.id} className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200">
-                <div className="flex justify-between items-start border-b pb-3 mb-3">
-                  <div>
-                    <div className="flex items-center gap-1.5 mb-2">
+              <div key={cls.id} className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200 max-sm:min-w-0">
+                <div className="flex justify-between items-start border-b pb-3 mb-3 max-sm:min-w-0 max-sm:gap-2">
+                  <div className="max-sm:min-w-0 max-sm:flex-1">
+                    <div className="flex items-center gap-1.5 mb-2 max-sm:flex-wrap">
                       <span className="text-xs px-2 py-0.5 rounded font-bold bg-orange-100 text-orange-800">
                         新手友善
                       </span>
@@ -224,15 +240,15 @@ export default function ClassesPage() {
                       </span>
                     </div>
 
-                    <h2 className="text-lg font-bold text-gray-800">{cls.title}</h2>
-                    <p className="text-sm mt-1 flex items-center text-gray-600 font-medium">
+                    <h2 className="text-lg font-bold text-gray-800 max-sm:break-words">{cls.title}</h2>
+                    <p className="text-sm mt-1 flex items-center text-gray-600 font-medium max-sm:flex-wrap">
                       <UserCircle size={14} className="mr-1 text-gray-400" /> 教練：{cls.coach || '確認中'}
                     </p>
                     <p className="text-sm mt-0.5 text-gray-500">
                       📅 {cls.class_date} | {cls.start_time?.slice(0, 5)} - {cls.end_time?.slice(0, 5)}
                     </p>
                   </div>
-                  <div className="text-right">
+                  <div className="text-right max-sm:shrink-0">
                     <p className="font-bold text-lg text-orange-600">${cls.price}</p>
                   </div>
                 </div>
@@ -259,19 +275,18 @@ export default function ClassesPage() {
                       setSelectedClass(cls);
                       setSuccessMsg("");
                     }}
-                    className={`w-full font-bold py-3 rounded-xl transition-all shadow-md ${
-                      isFull
+                    className={`w-full font-bold py-3 rounded-xl transition-all shadow-md ${isFull
                         ? 'bg-gray-200 text-gray-400 cursor-not-allowed shadow-none'
                         : 'text-white bg-orange-600 active:scale-95 cursor-pointer'
-                    }`}
+                      }`}
                   >
                     {isFull ? '已額滿' : '我要報名'}
                   </button>
                 )}
 
                 {selectedClass?.id === cls.id && (
-                  <div className="mt-4 p-4 rounded-xl border-2 animate-in fade-in slide-in-from-top-2 border-orange-600 bg-orange-50">
-                    <div className="flex justify-between items-center mb-3">
+                  <div className="mt-4 p-4 rounded-xl border-2 animate-in fade-in slide-in-from-top-2 border-orange-600 bg-orange-50 max-sm:min-w-0">
+                    <div className="flex justify-between items-center mb-3 max-sm:flex-wrap max-sm:gap-2">
                       <h3 className="font-bold text-sm text-orange-900">填寫報名資料</h3>
                       <span className="text-xs font-bold text-orange-700 bg-orange-100 px-2 py-0.5 rounded">
                         場地：{courtName}
@@ -284,7 +299,7 @@ export default function ClassesPage() {
                           type="text"
                           required
                           placeholder="姓名 / 暱稱"
-                          className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-orange-500"
+                          className="w-full min-w-0 bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm max-sm:text-base focus:outline-none focus:ring-1 focus:ring-orange-500"
                           style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
                           value={name}
                           onChange={(e) => setName(e.target.value)}
@@ -296,7 +311,7 @@ export default function ClassesPage() {
                           required
                           placeholder="手機號碼 (例如: 0912345678)"
                           pattern="[0-9]{10}"
-                          className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-orange-500"
+                          className="w-full min-w-0 bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm max-sm:text-base focus:outline-none focus:ring-1 focus:ring-orange-500"
                           style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
                           value={phone}
                           onChange={(e) => setPhone(e.target.value)}
@@ -320,7 +335,7 @@ export default function ClassesPage() {
                         <textarea
                           rows={2}
                           placeholder="請簡述您的球齡，或是否有需要教練注意的運動舊傷？（選填）"
-                          className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-orange-500 resize-none"
+                          className="w-full min-w-0 bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm max-sm:text-base focus:outline-none focus:ring-1 focus:ring-orange-500 resize-none"
                           style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
                           value={notes}
                           onChange={(e) => setNotes(e.target.value)}
@@ -353,8 +368,8 @@ export default function ClassesPage() {
       </div>
 
       {bookingResult && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 animate-in fade-in overflow-y-auto pt-10 pb-10">
-          <div className="bg-white rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl animate-in zoom-in-95 my-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 animate-in fade-in overflow-y-auto pt-10 pb-10 max-sm:items-start max-sm:py-4 max-sm:overscroll-contain">
+          <div className="bg-white rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl animate-in zoom-in-95 my-auto max-sm:my-0 max-sm:max-h-[calc(100dvh-2rem)] max-sm:overflow-y-auto max-sm:overscroll-contain">
             <div className="p-5 text-center bg-orange-600">
               <CheckCircle2 size={48} className="mx-auto text-white mb-2" />
               <h2 className="text-xl font-bold text-white">報名成功！</h2>
@@ -363,19 +378,19 @@ export default function ClassesPage() {
               </p>
             </div>
 
-            <div className="p-6 space-y-4">
+            <div className="p-6 space-y-4 max-sm:min-w-0">
               {paymentMode === 'select' && (
                 <>
                   <h3 className="font-bold text-center text-gray-800 mb-2">請選擇付款方式</h3>
                   <button
                     onClick={() => updatePaymentMethod('online')}
-                    className="w-full flex items-center justify-center gap-2 bg-green-50 text-green-700 border-2 border-green-500 font-bold py-3.5 rounded-xl hover:bg-green-100 transition"
+                    className="w-full flex items-center justify-center gap-2 max-sm:flex-wrap max-sm:text-center bg-green-50 text-green-700 border-2 border-green-500 font-bold py-3.5 rounded-xl hover:bg-green-100 transition"
                   >
                     <QrCode size={20} /> 線上掃碼 (LINE Pay / TWQR)
                   </button>
                   <button
                     onClick={() => updatePaymentMethod('onsite')}
-                    className="w-full flex items-center justify-center gap-2 bg-gray-50 text-gray-700 border-2 border-gray-300 font-bold py-3.5 rounded-xl hover:bg-gray-100 transition"
+                    className="w-full flex items-center justify-center gap-2 max-sm:flex-wrap max-sm:text-center bg-gray-50 text-gray-700 border-2 border-gray-300 font-bold py-3.5 rounded-xl hover:bg-gray-100 transition"
                   >
                     現場付款
                   </button>
