@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { supabase } from "../../lib/supabase";
 import Link from "next/link";
 import {
@@ -210,29 +210,49 @@ export default function AdminPage() {
   }, [activeTab, dateFilter, customStartDate]);
 
 
+  // 防止較舊的查詢結果覆蓋較新的日期範圍。
+  const fetchSequence = useRef(0);
+
   const fetchAllData = useCallback(async () => {
     if (!isAuthenticated) return;
     setLoading(true);
 
+    const requestId = ++fetchSequence.current;
     const limitDateStr = getFetchLimitDateStr();
 
-    const { data: courtsOptions } = await supabase.from("courts").select("*").order("name");
+    // 六組查詢彼此獨立：同時送出，維持原本的欄位、排序及日期條件。
+    const [
+      { data: courtsOptions },
+      { data: rulesData },
+      { data: specialsData },
+      { data: courtsData },
+      { data: classesData },
+      { data: openPlaysData },
+    ] = await Promise.all([
+      supabase.from("courts").select("*").order("name"),
+      supabase.from("pricing_rules").select("*").order("day_type").order("start_time"),
+      supabase.from("special_dates").select("*").order("date", { ascending: true }),
+      supabase.from("court_bookings")
+        .select(`*, users (name, phone), courts (name)`)
+        .gte("booking_date", limitDateStr)
+        .order("booking_date", { ascending: false })
+        .order("court_id", { ascending: true })
+        .order("user_id", { ascending: true })
+        .order("start_time", { ascending: true }),
+      supabase.from("classes")
+        .select(`*, courts (name), class_bookings (id, status, notes, need_paddle, payment_method, payment_status, is_checked_in, users (name, phone))`)
+        .gte("class_date", limitDateStr)
+        .order("class_date", { ascending: false }),
+      supabase.from("open_play_sessions")
+        .select(`*, courts(name), open_play_players (id, status, created_at, player_notes, payment_method, payment_status, is_checked_in, users (name, phone))`)
+        .gte("session_date", limitDateStr)
+        .order("session_date", { ascending: false }),
+    ]);
+
+    if (requestId !== fetchSequence.current) return;
     if (courtsOptions) setCourtsList(courtsOptions);
-
-    const { data: rulesData } = await supabase.from("pricing_rules").select("*").order("day_type").order("start_time");
     if (rulesData) setPricingRules(rulesData);
-
-    const { data: specialsData } = await supabase.from("special_dates").select("*").order("date", { ascending: true });
     if (specialsData) setSpecialDates(specialsData);
-
-    const { data: courtsData } = await supabase
-      .from("court_bookings")
-      .select(`*, users (name, phone), courts (name)`)
-      .gte("booking_date", limitDateStr)
-      .order("booking_date", { ascending: false })
-      .order("court_id", { ascending: true })
-      .order("user_id", { ascending: true })
-      .order("start_time", { ascending: true });
 
     if (courtsData) {
       setRawCourtBookings(courtsData);
@@ -267,18 +287,7 @@ export default function AdminPage() {
       setCourtBookings(groupedCourts);
     }
 
-    const { data: classesData } = await supabase
-      .from("classes")
-      .select(`*, courts (name), class_bookings (id, status, notes, need_paddle, payment_method, payment_status, is_checked_in, users (name, phone))`)
-      .gte("class_date", limitDateStr)
-      .order("class_date", { ascending: false });
     if (classesData) setClassesList(classesData);
-
-    const { data: openPlaysData } = await supabase
-      .from("open_play_sessions")
-      .select(`*, courts(name), open_play_players (id, status, created_at, player_notes, payment_method, payment_status, is_checked_in, users (name, phone))`)
-      .gte("session_date", limitDateStr)
-      .order("session_date", { ascending: false });
     if (openPlaysData) setOpenPlaySessions(openPlaysData);
 
     setLoading(false);
@@ -286,7 +295,7 @@ export default function AdminPage() {
 
   useEffect(() => {
     fetchAllData();
-  }, [activeTab, dateFilter, customStartDate, customEndDate, fetchAllData]);
+  }, [fetchAllData]);
 
   // 🌟 歷史查詢邏輯
   const fetchHistoryData = async () => {
@@ -955,7 +964,7 @@ export default function AdminPage() {
 
   if (!isAuthenticated) {
     return (
-      <main className="w-full min-h-screen max-w-md mx-auto bg-gray-50 flex flex-col justify-center px-6 pb-20 relative">
+      <main className="w-full min-h-screen max-w-md mx-auto bg-gray-50 flex flex-col justify-center px-6 pb-20 relative max-sm:min-w-0 max-sm:overflow-x-clip">
         <div className="bg-white p-8 rounded-3xl shadow-lg border border-gray-100 space-y-6">
           <div className="text-center space-y-2">
             <div className="bg-emerald-100 text-emerald-600 w-12 h-12 rounded-full flex items-center justify-center mx-auto">
@@ -968,7 +977,7 @@ export default function AdminPage() {
             <input
               type="email"
               placeholder="管理員 Email"
-              className="w-full bg-white text-gray-900 border-2 border-gray-200 rounded-xl p-3 text-sm focus:outline-none"
+              className="w-full bg-white text-gray-900 border-2 border-gray-200 rounded-xl p-3 text-sm focus:outline-none max-sm:text-base max-sm:min-w-0"
               style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
               value={inputUsername}
               onChange={(e) => setInputUsername(e.target.value)}
@@ -977,7 +986,7 @@ export default function AdminPage() {
             <input
               type="password"
               placeholder="管理員密碼"
-              className="w-full bg-white text-gray-900 border-2 border-gray-200 rounded-xl p-3 text-sm focus:outline-none"
+              className="w-full bg-white text-gray-900 border-2 border-gray-200 rounded-xl p-3 text-sm focus:outline-none max-sm:text-base max-sm:min-w-0"
               style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
               value={inputPassword}
               onChange={(e) => setInputPassword(e.target.value)}
@@ -997,7 +1006,7 @@ export default function AdminPage() {
   }
 
   return (
-    <main className="w-full min-h-screen max-w-md mx-auto bg-gray-50 flex flex-col pb-10 relative">
+    <main className="w-full min-h-screen max-w-md mx-auto bg-gray-50 flex flex-col pb-10 relative max-sm:min-w-0 max-sm:overflow-x-clip">
       <header className="w-full shrink-0 text-white py-4 px-4 flex items-center justify-center shadow-md bg-gray-800 relative z-10">
         <Link href="/" className="absolute left-4 p-2 rounded-full transition bg-white/10 hover:bg-white/20 active:scale-95">
           <ArrowLeft size={20} />
@@ -1008,7 +1017,7 @@ export default function AdminPage() {
         </button>
       </header>
 
-      <div className="p-5 space-y-4">
+      <div className="p-5 space-y-4 max-sm:min-w-0 max-sm:px-3">
         {/* 導覽列：兩排固定順序 */}
         <div className="grid grid-cols-3 gap-1.5 bg-gray-200 p-1.5 rounded-xl">
           <button onClick={() => setActiveTab('dashboard')} className={`py-2 text-xs font-bold rounded-lg transition-all ${activeTab === 'dashboard' ? 'shadow-sm bg-white text-gray-900' : 'opacity-60 text-gray-600'}`}>📊 營收</button>
@@ -1039,10 +1048,10 @@ export default function AdminPage() {
                     </h3>
                   </div>
 
-                  <div className="flex gap-2">
-                    <input type="date" value={historyStartDate} onChange={(e) => setHistoryStartDate(e.target.value)} className="flex-1 bg-gray-50 border p-2 rounded-lg text-xs" style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }} />
+                  <div className="flex gap-2 max-sm:flex-col">
+                    <input type="date" value={historyStartDate} onChange={(e) => setHistoryStartDate(e.target.value)} className="flex-1 min-w-0 bg-gray-50 border p-2 rounded-lg text-xs max-sm:text-base" style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }} />
                     <span className="self-center text-gray-500 font-bold">~</span>
-                    <input type="date" value={historyEndDate} onChange={(e) => setHistoryEndDate(e.target.value)} className="flex-1 bg-gray-50 border p-2 rounded-lg text-xs" style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }} />
+                    <input type="date" value={historyEndDate} onChange={(e) => setHistoryEndDate(e.target.value)} className="flex-1 min-w-0 bg-gray-50 border p-2 rounded-lg text-xs max-sm:text-base" style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }} />
                   </div>
 
                   <div className="flex gap-2">
@@ -1172,8 +1181,8 @@ export default function AdminPage() {
                                         else handleToggleOpenPlayPayment(b.id, b.payment_status);
                                       }}
                                       className={`text-[11px] font-bold px-3 py-1.5 rounded-lg border transition flex shrink-0 items-center justify-center gap-1 ${b.payment_status === "paid"
-                                          ? "bg-emerald-50 text-emerald-700 border-emerald-300"
-                                          : "bg-amber-50 text-amber-800 border-amber-300 shadow-sm"
+                                        ? "bg-emerald-50 text-emerald-700 border-emerald-300"
+                                        : "bg-amber-50 text-amber-800 border-amber-300 shadow-sm"
                                         }`}
                                     >
                                       <DollarSign size={12} />
@@ -1218,8 +1227,8 @@ export default function AdminPage() {
                                 <button
                                   onClick={() => handleToggleCourtPayment(item.ids, item.payment_status)}
                                   className={`text-[11px] font-bold px-4 py-1.5 rounded-lg border transition flex items-center justify-center gap-1 ${isPaid
-                                      ? "bg-emerald-50 text-emerald-700 border-emerald-300"
-                                      : "bg-amber-50 text-amber-800 border-amber-300 shadow-sm"
+                                    ? "bg-emerald-50 text-emerald-700 border-emerald-300"
+                                    : "bg-amber-50 text-amber-800 border-amber-300 shadow-sm"
                                     }`}
                                 >
                                   <DollarSign size={12} />
@@ -1257,7 +1266,7 @@ export default function AdminPage() {
                     <input
                       type="text"
                       placeholder="輸入姓名或手機號碼 (末三碼可)..."
-                      className="w-full bg-gray-50 text-gray-900 border border-gray-200 rounded-xl pl-9 pr-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      className="w-full bg-gray-50 text-gray-900 border border-gray-200 rounded-xl pl-9 pr-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500 max-sm:text-base max-sm:min-w-0"
                       style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
                       value={checkInKeyword}
                       onChange={(e) => setCheckInKeyword(e.target.value)}
@@ -1274,10 +1283,10 @@ export default function AdminPage() {
                             <div className="flex items-center gap-1.5">
                               <span
                                 className={`text-[10px] px-1.5 py-0.2 rounded font-bold ${item.type === "臨打"
-                                    ? "bg-blue-100 text-blue-700"
-                                    : item.type === "課程"
-                                      ? "bg-orange-100 text-orange-700"
-                                      : "bg-emerald-100 text-emerald-700"
+                                  ? "bg-blue-100 text-blue-700"
+                                  : item.type === "課程"
+                                    ? "bg-orange-100 text-orange-700"
+                                    : "bg-emerald-100 text-emerald-700"
                                   }`}
                               >
                                 {item.type}
@@ -1294,8 +1303,8 @@ export default function AdminPage() {
                             <button
                               onClick={() => handleToggleCheckIn(item.tableName, item.id)}
                               className={`text-[11px] font-bold w-14 py-1.5 rounded-lg border transition flex items-center justify-center ${item.isCheckedIn
-                                  ? "bg-gray-800 text-white border-gray-900 shadow-sm"
-                                  : "bg-gray-100 text-gray-600 border-gray-300 hover:bg-gray-200"
+                                ? "bg-gray-800 text-white border-gray-900 shadow-sm"
+                                : "bg-gray-100 text-gray-600 border-gray-300 hover:bg-gray-200"
                                 }`}
                             >
                               {item.isCheckedIn ? "已簽到" : "簽到"}
@@ -1308,8 +1317,8 @@ export default function AdminPage() {
                                 else handleToggleOpenPlayPayment(item.id, item.paymentStatus);
                               }}
                               className={`text-[11px] font-bold w-14 py-1.5 rounded-lg border transition flex items-center justify-center ${item.paymentStatus === "paid"
-                                  ? "bg-emerald-50 text-emerald-700 border-emerald-300 shadow-sm"
-                                  : "bg-amber-50 text-amber-800 border-amber-300 shadow-sm"
+                                ? "bg-emerald-50 text-emerald-700 border-emerald-300 shadow-sm"
+                                : "bg-amber-50 text-amber-800 border-amber-300 shadow-sm"
                                 }`}
                             >
                               {item.paymentStatus === "paid" ? "已收" : "未收"}
@@ -1512,8 +1521,8 @@ export default function AdminPage() {
                           <div className="flex items-center gap-2">
                             <span
                               className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${b.payment_method === 'online'
-                                  ? 'bg-green-100 text-green-700'
-                                  : 'bg-gray-200 text-gray-700'
+                                ? 'bg-green-100 text-green-700'
+                                : 'bg-gray-200 text-gray-700'
                                 }`}
                             >
                               {b.payment_method === 'online' ? '📱 線上付款' : '💵 現場付款'}
@@ -1544,8 +1553,8 @@ export default function AdminPage() {
                             <button
                               onClick={() => handleToggleCourtPayment(b.ids, b.payment_status)}
                               className={`flex-1 text-xs font-bold py-2 rounded-lg border transition flex items-center justify-center gap-1 ${b.payment_status === 'paid'
-                                  ? 'bg-emerald-500 text-white border-emerald-600'
-                                  : 'bg-amber-100 text-amber-800 border-amber-300'
+                                ? 'bg-emerald-500 text-white border-emerald-600'
+                                : 'bg-amber-100 text-amber-800 border-amber-300'
                                 }`}
                             >
                               <DollarSign size={14} />
@@ -1636,8 +1645,8 @@ export default function AdminPage() {
                                     key={c.id}
                                     onClick={() => toggleClassCellSelection(cellKey)}
                                     className={`border-b border-l p-1 cursor-pointer transition select-none ${isSelected
-                                        ? 'bg-orange-500 text-white font-bold'
-                                        : 'bg-green-50 text-green-700 hover:bg-green-200 font-medium'
+                                      ? 'bg-orange-500 text-white font-bold'
+                                      : 'bg-green-50 text-green-700 hover:bg-green-200 font-medium'
                                       }`}
                                   >
                                     {isSelected ? '已選' : '空檔'}
@@ -1695,14 +1704,14 @@ export default function AdminPage() {
                       type="text"
                       placeholder="課程名稱"
                       required
-                      className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
+                      className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm max-sm:text-base max-sm:min-w-0"
                       style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
                       value={newClass.title}
                       onChange={(e) => setNewClass({ ...newClass, title: e.target.value })}
                     />
 
                     <select
-                      className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
+                      className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm max-sm:text-base max-sm:min-w-0"
                       style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
                       value={newClass.court_id}
                       onChange={(e) => setNewClass({ ...newClass, court_id: e.target.value })}
@@ -1719,7 +1728,7 @@ export default function AdminPage() {
                       type="text"
                       placeholder="教練名稱"
                       required
-                      className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
+                      className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm max-sm:text-base max-sm:min-w-0"
                       style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
                       value={newClass.coach}
                       onChange={(e) => setNewClass({ ...newClass, coach: e.target.value })}
@@ -1727,7 +1736,7 @@ export default function AdminPage() {
                     <input
                       type="date"
                       required
-                      className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
+                      className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm max-sm:text-base max-sm:min-w-0"
                       style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
                       value={newClass.class_date}
                       onChange={(e) => setNewClass({ ...newClass, class_date: e.target.value })}
@@ -1737,7 +1746,7 @@ export default function AdminPage() {
                       <input
                         type="time"
                         required
-                        className="flex-1 bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
+                        className="flex-1 bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm max-sm:text-base max-sm:min-w-0"
                         style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
                         value={newClass.start_time}
                         onChange={(e) => setNewClass({ ...newClass, start_time: e.target.value })}
@@ -1745,7 +1754,7 @@ export default function AdminPage() {
                       <input
                         type="time"
                         required
-                        className="flex-1 bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
+                        className="flex-1 bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm max-sm:text-base max-sm:min-w-0"
                         style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
                         value={newClass.end_time}
                         onChange={(e) => setNewClass({ ...newClass, end_time: e.target.value })}
@@ -1758,7 +1767,7 @@ export default function AdminPage() {
                         <input
                           type="number"
                           required
-                          className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
+                          className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm max-sm:text-base max-sm:min-w-0"
                           style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
                           value={newClass.max_players}
                           onChange={(e) => setNewClass({ ...newClass, max_players: Number(e.target.value) })}
@@ -1769,7 +1778,7 @@ export default function AdminPage() {
                         <input
                           type="number"
                           required
-                          className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
+                          className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm max-sm:text-base max-sm:min-w-0"
                           style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
                           value={newClass.price}
                           onChange={(e) => setNewClass({ ...newClass, price: Number(e.target.value) })}
@@ -1780,7 +1789,7 @@ export default function AdminPage() {
                     <input
                       type="text"
                       placeholder="備註 (選填)"
-                      className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
+                      className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm max-sm:text-base max-sm:min-w-0"
                       style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
                       value={newClass.notes}
                       onChange={(e) => setNewClass({ ...newClass, notes: e.target.value })}
@@ -1811,14 +1820,14 @@ export default function AdminPage() {
                             type="text"
                             placeholder="課程名稱"
                             required
-                            className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
+                            className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm max-sm:text-base max-sm:min-w-0"
                             style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
                             value={editClass.title}
                             onChange={(e) => setEditClass({ ...editClass, title: e.target.value })}
                           />
 
                           <select
-                            className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
+                            className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm max-sm:text-base max-sm:min-w-0"
                             style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
                             value={editClass.court_id}
                             onChange={(e) => setEditClass({ ...editClass, court_id: e.target.value })}
@@ -1835,7 +1844,7 @@ export default function AdminPage() {
                             type="text"
                             placeholder="教練名稱"
                             required
-                            className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
+                            className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm max-sm:text-base max-sm:min-w-0"
                             style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
                             value={editClass.coach}
                             onChange={(e) => setEditClass({ ...editClass, coach: e.target.value })}
@@ -1843,7 +1852,7 @@ export default function AdminPage() {
                           <input
                             type="date"
                             required
-                            className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
+                            className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm max-sm:text-base max-sm:min-w-0"
                             style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
                             value={editClass.class_date}
                             onChange={(e) => setEditClass({ ...editClass, class_date: e.target.value })}
@@ -1853,7 +1862,7 @@ export default function AdminPage() {
                             <input
                               type="time"
                               required
-                              className="flex-1 bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
+                              className="flex-1 bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm max-sm:text-base max-sm:min-w-0"
                               style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
                               value={editClass.start_time}
                               onChange={(e) => setEditClass({ ...editClass, start_time: e.target.value })}
@@ -1861,7 +1870,7 @@ export default function AdminPage() {
                             <input
                               type="time"
                               required
-                              className="flex-1 bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
+                              className="flex-1 bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm max-sm:text-base max-sm:min-w-0"
                               style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
                               value={editClass.end_time}
                               onChange={(e) => setEditClass({ ...editClass, end_time: e.target.value })}
@@ -1874,7 +1883,7 @@ export default function AdminPage() {
                               <input
                                 type="number"
                                 required
-                                className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
+                                className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm max-sm:text-base max-sm:min-w-0"
                                 style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
                                 value={editClass.max_players}
                                 onChange={(e) => setEditClass({ ...editClass, max_players: Number(e.target.value) })}
@@ -1885,7 +1894,7 @@ export default function AdminPage() {
                               <input
                                 type="number"
                                 required
-                                className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
+                                className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm max-sm:text-base max-sm:min-w-0"
                                 style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
                                 value={editClass.price}
                                 onChange={(e) => setEditClass({ ...editClass, price: Number(e.target.value) })}
@@ -1896,7 +1905,7 @@ export default function AdminPage() {
                           <input
                             type="text"
                             placeholder="備註 (選填)"
-                            className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
+                            className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm max-sm:text-base max-sm:min-w-0"
                             style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
                             value={editClass.notes}
                             onChange={(e) => setEditClass({ ...editClass, notes: e.target.value })}
@@ -1985,8 +1994,8 @@ export default function AdminPage() {
 
                                     <span
                                       className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${booking.payment_method === 'online'
-                                          ? 'bg-green-100 text-green-700'
-                                          : 'bg-gray-200 text-gray-700'
+                                        ? 'bg-green-100 text-green-700'
+                                        : 'bg-gray-200 text-gray-700'
                                         }`}
                                     >
                                       {booking.payment_method === 'online' ? '📱 線上付款' : '💵 現場付款'}
@@ -2006,8 +2015,8 @@ export default function AdminPage() {
                                   <button
                                     onClick={() => handleToggleClassPayment(booking.id, booking.payment_status)}
                                     className={`text-xs font-bold px-2.5 py-1.5 rounded-lg border transition flex items-center gap-1 ${booking.payment_status === 'paid'
-                                        ? 'bg-emerald-500 text-white border-emerald-600'
-                                        : 'bg-amber-100 text-amber-800 border-amber-300'
+                                      ? 'bg-emerald-500 text-white border-emerald-600'
+                                      : 'bg-amber-100 text-amber-800 border-amber-300'
                                       }`}
                                   >
                                     <DollarSign size={14} />
@@ -2095,8 +2104,8 @@ export default function AdminPage() {
                                     key={c.id}
                                     onClick={() => toggleCellSelection(cellKey)}
                                     className={`border-b border-l p-1 cursor-pointer transition select-none ${isSelected
-                                        ? 'bg-blue-500 text-white font-bold'
-                                        : 'bg-green-50 text-green-700 hover:bg-green-200 font-medium'
+                                      ? 'bg-blue-500 text-white font-bold'
+                                      : 'bg-green-50 text-green-700 hover:bg-green-200 font-medium'
                                       }`}
                                   >
                                     {isSelected ? '已選' : '空檔'}
@@ -2154,7 +2163,7 @@ export default function AdminPage() {
                       type="text"
                       placeholder="場次名稱"
                       required
-                      className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
+                      className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm max-sm:text-base max-sm:min-w-0"
                       style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
                       value={newOpenPlay.title}
                       onChange={(e) => setNewOpenPlay({ ...newOpenPlay, title: e.target.value })}
@@ -2207,7 +2216,7 @@ export default function AdminPage() {
                     <input
                       type="date"
                       required
-                      className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
+                      className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm max-sm:text-base max-sm:min-w-0"
                       style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
                       value={newOpenPlay.session_date}
                       onChange={(e) => setNewOpenPlay({ ...newOpenPlay, session_date: e.target.value })}
@@ -2216,7 +2225,7 @@ export default function AdminPage() {
                       <input
                         type="time"
                         required
-                        className="flex-1 bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
+                        className="flex-1 bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm max-sm:text-base max-sm:min-w-0"
                         style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
                         value={newOpenPlay.start_time}
                         onChange={(e) => setNewOpenPlay({ ...newOpenPlay, start_time: e.target.value })}
@@ -2224,7 +2233,7 @@ export default function AdminPage() {
                       <input
                         type="time"
                         required
-                        className="flex-1 bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
+                        className="flex-1 bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm max-sm:text-base max-sm:min-w-0"
                         style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
                         value={newOpenPlay.end_time}
                         onChange={(e) => setNewOpenPlay({ ...newOpenPlay, end_time: e.target.value })}
@@ -2237,7 +2246,7 @@ export default function AdminPage() {
                         <input
                           type="number"
                           required
-                          className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
+                          className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm max-sm:text-base max-sm:min-w-0"
                           style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
                           value={newOpenPlay.max_players}
                           onChange={(e) => setNewOpenPlay({ ...newOpenPlay, max_players: Number(e.target.value) })}
@@ -2248,7 +2257,7 @@ export default function AdminPage() {
                         <input
                           type="number"
                           required
-                          className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
+                          className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm max-sm:text-base max-sm:min-w-0"
                           style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
                           value={newOpenPlay.max_waitlist}
                           onChange={(e) => setNewOpenPlay({ ...newOpenPlay, max_waitlist: Number(e.target.value) })}
@@ -2259,7 +2268,7 @@ export default function AdminPage() {
                         <input
                           type="number"
                           required
-                          className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
+                          className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm max-sm:text-base max-sm:min-w-0"
                           style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
                           value={newOpenPlay.price}
                           onChange={(e) => setNewOpenPlay({ ...newOpenPlay, price: Number(e.target.value) })}
@@ -2270,7 +2279,7 @@ export default function AdminPage() {
                     <input
                       type="text"
                       placeholder="備註 (選填，例如：含教練指導)"
-                      className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
+                      className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm max-sm:text-base max-sm:min-w-0"
                       style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
                       value={newOpenPlay.notes}
                       onChange={(e) => setNewOpenPlay({ ...newOpenPlay, notes: e.target.value })}
@@ -2300,7 +2309,7 @@ export default function AdminPage() {
                             type="text"
                             placeholder="場次名稱"
                             required
-                            className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
+                            className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm max-sm:text-base max-sm:min-w-0"
                             style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
                             value={editOpenPlay.title}
                             onChange={(e) => setEditOpenPlay({ ...editOpenPlay, title: e.target.value })}
@@ -2353,7 +2362,7 @@ export default function AdminPage() {
                           <input
                             type="date"
                             required
-                            className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
+                            className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm max-sm:text-base max-sm:min-w-0"
                             style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
                             value={editOpenPlay.session_date}
                             onChange={(e) => setEditOpenPlay({ ...editOpenPlay, session_date: e.target.value })}
@@ -2362,7 +2371,7 @@ export default function AdminPage() {
                             <input
                               type="time"
                               required
-                              className="flex-1 bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
+                              className="flex-1 bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm max-sm:text-base max-sm:min-w-0"
                               style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
                               value={editOpenPlay.start_time}
                               onChange={(e) => setEditOpenPlay({ ...editOpenPlay, start_time: e.target.value })}
@@ -2370,7 +2379,7 @@ export default function AdminPage() {
                             <input
                               type="time"
                               required
-                              className="flex-1 bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
+                              className="flex-1 bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm max-sm:text-base max-sm:min-w-0"
                               style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
                               value={editOpenPlay.end_time}
                               onChange={(e) => setEditOpenPlay({ ...editOpenPlay, end_time: e.target.value })}
@@ -2383,7 +2392,7 @@ export default function AdminPage() {
                               <input
                                 type="number"
                                 required
-                                className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
+                                className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm max-sm:text-base max-sm:min-w-0"
                                 style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
                                 value={editOpenPlay.max_players}
                                 onChange={(e) => setEditOpenPlay({ ...editOpenPlay, max_players: Number(e.target.value) })}
@@ -2394,7 +2403,7 @@ export default function AdminPage() {
                               <input
                                 type="number"
                                 required
-                                className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
+                                className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm max-sm:text-base max-sm:min-w-0"
                                 style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
                                 value={editOpenPlay.max_waitlist}
                                 onChange={(e) => setEditOpenPlay({ ...editOpenPlay, max_waitlist: Number(e.target.value) })}
@@ -2405,7 +2414,7 @@ export default function AdminPage() {
                               <input
                                 type="number"
                                 required
-                                className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
+                                className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm max-sm:text-base max-sm:min-w-0"
                                 style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
                                 value={editOpenPlay.price}
                                 onChange={(e) => setEditOpenPlay({ ...editOpenPlay, price: Number(e.target.value) })}
@@ -2416,7 +2425,7 @@ export default function AdminPage() {
                           <input
                             type="text"
                             placeholder="備註 (選填)"
-                            className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
+                            className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm max-sm:text-base max-sm:min-w-0"
                             style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
                             value={editOpenPlay.notes}
                             onChange={(e) => setEditOpenPlay({ ...editOpenPlay, notes: e.target.value })}
@@ -2511,8 +2520,8 @@ export default function AdminPage() {
                                   <div className="flex items-center gap-2 flex-wrap">
                                     <span
                                       className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${player.status === 'registered'
-                                          ? 'bg-blue-100 text-blue-700'
-                                          : 'bg-amber-100 text-amber-700'
+                                        ? 'bg-blue-100 text-blue-700'
+                                        : 'bg-amber-100 text-amber-700'
                                         }`}
                                     >
                                       {player.status === 'registered' ? '正取' : '候補'}
@@ -2522,8 +2531,8 @@ export default function AdminPage() {
 
                                     <span
                                       className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${player.payment_method === 'online'
-                                          ? 'bg-green-100 text-green-700'
-                                          : 'bg-gray-200 text-gray-700'
+                                        ? 'bg-green-100 text-green-700'
+                                        : 'bg-gray-200 text-gray-700'
                                         }`}
                                     >
                                       {player.payment_method === 'online' ? '📱 線上付款' : '💵 現場付款'}
@@ -2540,8 +2549,8 @@ export default function AdminPage() {
                                     <button
                                       onClick={() => handleToggleOpenPlayPayment(player.id, player.payment_status)}
                                       className={`text-xs font-bold px-2.5 py-1.5 rounded-lg border transition flex items-center gap-1 ${player.payment_status === 'paid'
-                                          ? 'bg-emerald-500 text-white border-emerald-600'
-                                          : 'bg-amber-100 text-amber-800 border-amber-300'
+                                        ? 'bg-emerald-500 text-white border-emerald-600'
+                                        : 'bg-amber-100 text-amber-800 border-amber-300'
                                         }`}
                                     >
                                       <DollarSign size={14} />
@@ -2592,7 +2601,7 @@ export default function AdminPage() {
                       <input
                         type="text"
                         required
-                        className="w-full bg-white text-gray-900 border border-gray-300 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                        className="w-full bg-white text-gray-900 border border-gray-300 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 max-sm:text-base max-sm:min-w-0"
                         style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
                         value={tempVenueName}
                         onChange={(e) => setTempVenueName(e.target.value)}
@@ -2605,7 +2614,7 @@ export default function AdminPage() {
                         type="text"
                         required
                         placeholder="https://lin.ee/..."
-                        className="w-full bg-white text-gray-900 border border-gray-300 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                        className="w-full bg-white text-gray-900 border border-gray-300 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 max-sm:text-base max-sm:min-w-0"
                         style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
                         value={tempLineUrl}
                         onChange={(e) => setTempLineUrl(e.target.value)}
@@ -2634,7 +2643,7 @@ export default function AdminPage() {
                         <textarea
                           rows={2}
                           placeholder="請輸入公告內容，例如：今日因颱風休館一天。"
-                          className="w-full bg-white text-gray-900 border border-gray-300 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 resize-none"
+                          className="w-full bg-white text-gray-900 border border-gray-300 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 resize-none max-sm:text-base max-sm:min-w-0"
                           style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
                           value={tempAnnouncementText}
                           onChange={(e) => setTempAnnouncementText(e.target.value)}
@@ -2652,7 +2661,7 @@ export default function AdminPage() {
                           <input
                             type="number"
                             min="0"
-                            className="w-24 bg-white text-gray-900 border border-gray-300 rounded-xl p-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                            className="w-24 bg-white text-gray-900 border border-gray-300 rounded-xl p-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 max-sm:text-base"
                             style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
                             value={tempCancelLimitHours}
                             onChange={(e) => setTempCancelLimitHours(e.target.value)}
@@ -2688,7 +2697,7 @@ export default function AdminPage() {
                       <input
                         type="date"
                         required
-                        className="w-full bg-white text-gray-900 border border-gray-300 rounded-xl p-2.5 text-sm"
+                        className="w-full bg-white text-gray-900 border border-gray-300 rounded-xl p-2.5 text-sm max-sm:text-base max-sm:min-w-0"
                         style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
                         value={newSpecialDate}
                         onChange={(e) => setNewSpecialDate(e.target.value)}
@@ -2699,7 +2708,7 @@ export default function AdminPage() {
                       <input
                         type="text"
                         placeholder="例如: 國慶日"
-                        className="w-full bg-white text-gray-900 border border-gray-300 rounded-xl p-2.5 text-sm"
+                        className="w-full bg-white text-gray-900 border border-gray-300 rounded-xl p-2.5 text-sm max-sm:text-base max-sm:min-w-0"
                         style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
                         value={newSpecialDesc}
                         onChange={(e) => setNewSpecialDesc(e.target.value)}
@@ -2747,7 +2756,7 @@ export default function AdminPage() {
                     <div>
                       <label className="text-xs font-bold text-gray-600 mb-1 block">適用日型</label>
                       <select
-                        className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2 text-xs"
+                        className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2 text-xs max-sm:text-base max-sm:min-w-0"
                         style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
                         value={newRuleDayType}
                         onChange={(e) => setNewRuleDayType(e.target.value)}
@@ -2762,7 +2771,7 @@ export default function AdminPage() {
                         type="number"
                         required
                         min="0"
-                        className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2 text-xs"
+                        className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2 text-xs max-sm:text-base max-sm:min-w-0"
                         style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
                         value={newRulePrice}
                         onChange={(e) => setNewRulePrice(Number(e.target.value))}
@@ -2773,7 +2782,7 @@ export default function AdminPage() {
                       <input
                         type="time"
                         required
-                        className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2 text-xs"
+                        className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2 text-xs max-sm:text-base max-sm:min-w-0"
                         style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
                         value={newRuleStart}
                         onChange={(e) => setNewRuleStart(e.target.value)}
@@ -2784,7 +2793,7 @@ export default function AdminPage() {
                       <input
                         type="time"
                         required
-                        className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-xs"
+                        className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-xs max-sm:text-base max-sm:min-w-0"
                         style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
                         value={newRuleEnd}
                         onChange={(e) => setNewRuleEnd(e.target.value)}
@@ -2854,7 +2863,7 @@ export default function AdminPage() {
                   type="text"
                   required
                   placeholder="例如: 王大明"
-                  className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 max-sm:text-base max-sm:min-w-0"
                   style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
                   value={agentName}
                   onChange={(e) => setAgentName(e.target.value)}
@@ -2868,7 +2877,7 @@ export default function AdminPage() {
                   required
                   placeholder="例如: 0912345678"
                   pattern="[0-9]{10}"
-                  className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 max-sm:text-base max-sm:min-w-0"
                   style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
                   value={agentPhone}
                   onChange={(e) => setAgentPhone(e.target.value)}
@@ -2879,7 +2888,7 @@ export default function AdminPage() {
                 <div>
                   <label className="text-xs font-bold text-gray-600 mb-1 block">排定狀態</label>
                   <select
-                    className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2 text-sm"
+                    className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2 text-sm max-sm:text-base max-sm:min-w-0"
                     style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
                     value={agentStatus}
                     onChange={(e: any) => setAgentStatus(e.target.value)}
@@ -2891,7 +2900,7 @@ export default function AdminPage() {
                 <div>
                   <label className="text-xs font-bold text-gray-600 mb-1 block">收款狀態</label>
                   <select
-                    className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2 text-sm"
+                    className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2 text-sm max-sm:text-base max-sm:min-w-0"
                     style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
                     value={agentPaymentStatus}
                     onChange={(e: any) => setAgentPaymentStatus(e.target.value)}
@@ -2907,7 +2916,7 @@ export default function AdminPage() {
                 <input
                   type="text"
                   placeholder="例如: LINE 預先約定、現金已收"
-                  className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 max-sm:text-base max-sm:min-w-0"
                   style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
                   value={agentNotes}
                   onChange={(e) => setAgentNotes(e.target.value)}
