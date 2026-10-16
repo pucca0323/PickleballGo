@@ -117,7 +117,7 @@ export default function MyBookingsPage() {
 
       for (const b of courtData) {
         if (!currentGroup) {
-          currentGroup = { ...b, ids: [b.id] };
+          currentGroup = { ...b, ids: [b.id], groupedPrices: [b.price] };
         } else {
           const isContiguous =
             currentGroup.booking_date === b.booking_date &&
@@ -129,9 +129,10 @@ export default function MyBookingsPage() {
           if (isContiguous) {
             currentGroup.end_time = b.end_time;
             currentGroup.ids.push(b.id);
+            currentGroup.groupedPrices.push(b.price);
           } else {
             groupedCourts.push(currentGroup);
-            currentGroup = { ...b, ids: [b.id] };
+            currentGroup = { ...b, ids: [b.id], groupedPrices: [b.price] };
           }
         }
       }
@@ -210,8 +211,10 @@ export default function MyBookingsPage() {
   const getCourtPayment = (b: any): PaymentInfo => {
     const court = getRel(b.courts);
     // 僅使用查詢 RPC 已回傳的價格；沒有價格時不猜測費用。
-    const perSlot = b.price !== undefined ? readAmount(b.price) : null;
-    const total = readAmount(b.total_price) ?? (b.ids.length === 1 ? perSlot : null);
+    const prices = Array.isArray(b.groupedPrices) ? b.groupedPrices.map(readAmount) : [readAmount(b.price)];
+    const total = prices.every((price: number | null) => price !== null)
+      ? prices.reduce((sum: number, price: number | null) => sum + (price ?? 0), 0)
+      : null;
     return {
       kind: 'court', title: court?.name || '場地預約',
       date: b.booking_date, start: b.start_time?.slice(0, 5) || '',
@@ -288,10 +291,6 @@ export default function MyBookingsPage() {
         <span className="font-bold text-gray-900">{formatMoney(item.amount)}</span>
       </div>
       {method && <div className="flex items-center justify-between gap-2"><span className="text-gray-500">付款方式</span><span className="font-medium text-gray-700">{method === 'onsite' ? '現場付款' : method === 'online' ? '線上掃碼付款' : method}</span></div>}
-      <div className="flex items-start justify-between gap-2 text-xs">
-        <span className="shrink-0 text-gray-400">預約識別碼</span>
-        <span className="break-all text-right text-gray-500">{item.reference}</span>
-      </div>
     </div>
   );
 
