@@ -29,6 +29,13 @@ import {
   Users
 } from "lucide-react";
 
+const getLocalYYYYMMDD = (d: Date) => {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 export default function AdminPage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [inputUsername, setInputUsername] = useState("");
@@ -39,6 +46,8 @@ export default function AdminPage() {
 
   const [courtsList, setCourtsList] = useState<any[]>([]);
   const [courtBookings, setCourtBookings] = useState<any[]>([]);
+  // 🌟 新增：保存未合併的原始場地資料，專供營收與報表計算使用，保證不漏單
+  const [rawCourtBookings, setRawCourtBookings] = useState<any[]>([]);
   const [classesList, setClassesList] = useState<any[]>([]);
   const [openPlaySessions, setOpenPlaySessions] = useState<any[]>([]);
 
@@ -71,8 +80,8 @@ export default function AdminPage() {
   const [newRulePrice, setNewRulePrice] = useState(250);
 
   const [dateFilter, setDateFilter] = useState<'today' | 'week' | 'month' | 'custom'>('today');
-  const [customStartDate, setCustomStartDate] = useState(new Date().toISOString().split("T")[0]);
-  const [customEndDate, setCustomEndDate] = useState(new Date().toISOString().split("T")[0]);
+  const [customStartDate, setCustomStartDate] = useState(getLocalYYYYMMDD(new Date()));
+  const [customEndDate, setCustomEndDate] = useState(getLocalYYYYMMDD(new Date()));
 
   const [isAddingClass, setIsAddingClass] = useState(false);
   const [isAddingOpenPlay, setIsAddingOpenPlay] = useState(false);
@@ -80,21 +89,19 @@ export default function AdminPage() {
   const [editingClassId, setEditingClassId] = useState<string | null>(null);
   const [editingOpenPlayId, setEditingOpenPlayId] = useState<string | null>(null);
 
-  // 臨打視覺化快選 State
   const [showVisualSchedule, setShowVisualSchedule] = useState(false);
   const [visualDate, setVisualDate] = useState(() => {
     const tmrw = new Date();
     tmrw.setDate(tmrw.getDate() + 1);
-    return new Date(tmrw.getTime() - tmrw.getTimezoneOffset() * 60000).toISOString().split("T")[0];
+    return getLocalYYYYMMDD(tmrw);
   });
   const [selectedGrid, setSelectedGrid] = useState<string[]>([]);
 
-  // 課程視覺化快選 State
   const [showClassVisualSchedule, setShowClassVisualSchedule] = useState(false);
   const [classVisualDate, setClassVisualDate] = useState(() => {
     const tmrw = new Date();
     tmrw.setDate(tmrw.getDate() + 1);
-    return new Date(tmrw.getTime() - tmrw.getTimezoneOffset() * 60000).toISOString().split("T")[0];
+    return getLocalYYYYMMDD(tmrw);
   });
   const [classSelectedGrid, setClassSelectedGrid] = useState<string[]>([]);
 
@@ -106,12 +113,11 @@ export default function AdminPage() {
   const [agentNotes, setAgentNotes] = useState("");
   const [isAgentSubmitting, setIsAgentSubmitting] = useState(false);
 
-  // 🌟 歷史查詢專用 State (加入 all 選項)
   const [historyType, setHistoryType] = useState<'all' | 'courts' | 'open_plays' | 'classes'>('all');
   const [historyStartDate, setHistoryStartDate] = useState(() => {
-    const d = new Date(); d.setDate(d.getDate() - 30); return d.toISOString().split("T")[0];
+    const d = new Date(); d.setDate(d.getDate() - 30); return getLocalYYYYMMDD(d);
   });
-  const [historyEndDate, setHistoryEndDate] = useState(() => new Date().toISOString().split("T")[0]);
+  const [historyEndDate, setHistoryEndDate] = useState(() => getLocalYYYYMMDD(new Date()));
   const [historyResults, setHistoryResults] = useState<any[]>([]);
   const [isFetchingHistory, setIsFetchingHistory] = useState(false);
 
@@ -139,29 +145,21 @@ export default function AdminPage() {
         configMap[item.key] = item.value;
       });
 
-      const fetchedVenue = configMap["venue_name"] || "匹克球館";
-      const fetchedUser = configMap["admin_username"] || "admin";
-      const fetchedPass = configMap["admin_password"] || "888";
-      const fetchedLine = configMap["line_url"] || "https://lin.ee/your_line_id";
-      const fetchedAnnounceActive = configMap["announcement_active"] === "true";
-      const fetchedAnnounceText = configMap["announcement_text"] || "";
-      const fetchedCancelLimit = configMap["cancel_limit_hours"] || "3";
+      setVenueName(configMap["venue_name"] || "匹克球館");
+      setAdminUser(configMap["admin_username"] || "admin");
+      setAdminPass(configMap["admin_password"] || "888");
+      setLineUrl(configMap["line_url"] || "https://lin.ee/your_line_id");
+      setAnnouncementActive(configMap["announcement_active"] === "true");
+      setAnnouncementText(configMap["announcement_text"] || "");
+      setCancelLimitHours(configMap["cancel_limit_hours"] || "3");
 
-      setVenueName(fetchedVenue);
-      setAdminUser(fetchedUser);
-      setAdminPass(fetchedPass);
-      setLineUrl(fetchedLine);
-      setAnnouncementActive(fetchedAnnounceActive);
-      setAnnouncementText(fetchedAnnounceText);
-      setCancelLimitHours(fetchedCancelLimit);
-
-      setTempVenueName(fetchedVenue);
-      setTempAdminUser(fetchedUser);
-      setTempAdminPass(fetchedPass);
-      setTempLineUrl(fetchedLine);
-      setTempAnnouncementActive(fetchedAnnounceActive);
-      setTempAnnouncementText(fetchedAnnounceText);
-      setTempCancelLimitHours(fetchedCancelLimit);
+      setTempVenueName(configMap["venue_name"] || "匹克球館");
+      setTempAdminUser(configMap["admin_username"] || "admin");
+      setTempAdminPass(configMap["admin_password"] || "888");
+      setTempLineUrl(configMap["line_url"] || "https://lin.ee/your_line_id");
+      setTempAnnouncementActive(configMap["announcement_active"] === "true");
+      setTempAnnouncementText(configMap["announcement_text"] || "");
+      setTempCancelLimitHours(configMap["cancel_limit_hours"] || "3");
     }
   };
 
@@ -182,31 +180,28 @@ export default function AdminPage() {
 
   const getFetchLimitDateStr = useCallback(() => {
     const now = new Date();
-    now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
 
     if (activeTab === 'dashboard') {
-      if (dateFilter === 'today') {
-        return now.toISOString().split("T")[0];
-      } else if (dateFilter === 'week') {
+      if (dateFilter === 'today') return getLocalYYYYMMDD(now);
+      if (dateFilter === 'week') {
         const startOfWeek = new Date(now);
         const day = startOfWeek.getDay();
         const diff = startOfWeek.getDate() - day + (day === 0 ? -6 : 1);
         startOfWeek.setDate(diff);
-        return startOfWeek.toISOString().split("T")[0];
-      } else if (dateFilter === 'month') {
-        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-        startOfMonth.setMinutes(startOfMonth.getMinutes() - startOfMonth.getTimezoneOffset());
-        return startOfMonth.toISOString().split("T")[0];
-      } else if (dateFilter === 'custom') {
+        return getLocalYYYYMMDD(startOfWeek);
+      }
+      if (dateFilter === 'month') {
+        return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+      }
+      if (dateFilter === 'custom') {
         return customStartDate;
       }
     }
 
     const defaultLimit = new Date(now);
     defaultLimit.setDate(defaultLimit.getDate() - 7);
-    return defaultLimit.toISOString().split("T")[0];
+    return getLocalYYYYMMDD(defaultLimit);
   }, [activeTab, dateFilter, customStartDate]);
-
 
   const fetchAllData = useCallback(async () => {
     if (!isAuthenticated) return;
@@ -233,6 +228,9 @@ export default function AdminPage() {
       .order("start_time", { ascending: true });
 
     if (courtsData) {
+      // 🌟 將最原始乾淨的資料存起來，供營收計算用
+      setRawCourtBookings(courtsData);
+
       const groupedCourts = [];
       let currentGroup: any = null;
 
@@ -252,7 +250,7 @@ export default function AdminPage() {
           if (isContiguous) {
             currentGroup.end_time = b.end_time;
             currentGroup.ids.push(b.id);
-            currentGroup.totalPrice += b.price || 250;
+            currentGroup.totalPrice += (b.price || 250);
           } else {
             groupedCourts.push(currentGroup);
             currentGroup = { ...b, ids: [b.id], totalPrice: b.price || 250 };
@@ -284,7 +282,6 @@ export default function AdminPage() {
     fetchAllData();
   }, [activeTab, dateFilter, customStartDate, customEndDate, fetchAllData]);
 
-  // 🌟 修改歷史抓取邏輯：支援「全部」，並混合排序
   const fetchHistoryData = async () => {
     setIsFetchingHistory(true);
     setHistoryResults([]);
@@ -314,7 +311,7 @@ export default function AdminPage() {
               if (isContiguous) {
                 currentGroup.end_time = b.end_time;
                 currentGroup.ids.push(b.id);
-                currentGroup.totalPrice += b.price || 250;
+                currentGroup.totalPrice += (b.price || 250);
               } else {
                 groupedCourts.push(currentGroup);
                 currentGroup = { ...b, ids: [b.id], totalPrice: b.price || 250 };
@@ -350,10 +347,9 @@ export default function AdminPage() {
 
       const combined = [...fetchedCourts, ...fetchedClasses, ...fetchedOpenPlays];
 
-      // 依日期與時間排序 (由新到舊)
       combined.sort((a, b) => {
-        const dateA = a.sortDate + ' ' + a.sortTime;
-        const dateB = b.sortDate + ' ' + b.sortTime;
+        const dateA = a.sortDate + ' ' + (a.sortTime || '00:00');
+        const dateB = b.sortDate + ' ' + (b.sortTime || '00:00');
         return dateA > dateB ? -1 : 1;
       });
 
@@ -465,10 +461,62 @@ export default function AdminPage() {
     setShowClassVisualSchedule(false); setIsAddingClass(true); setClassSelectedGrid([]); window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: inputUsername.trim(),
+      password: inputPassword.trim(),
+    });
+
+    if (error) {
+      alert("登入失敗，請確認您的 Email 與密碼是否正確：" + error.message);
+      setInputPassword("");
+      setLoading(false);
+      return;
+    }
+
+    sessionStorage.setItem("pickle_admin_auth", "true");
+    setIsAuthenticated(true);
+    fetchAllData();
+    setLoading(false);
+  };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    sessionStorage.removeItem("pickle_admin_auth");
+    setIsAuthenticated(false);
+  };
+
+  const handleSaveSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const updates = [
+      { key: "venue_name", value: tempVenueName.trim(), updated_at: new Date().toISOString() },
+      { key: "admin_username", value: tempAdminUser.trim(), updated_at: new Date().toISOString() },
+      { key: "admin_password", value: tempAdminPass.trim(), updated_at: new Date().toISOString() },
+      { key: "line_url", value: tempLineUrl.trim(), updated_at: new Date().toISOString() },
+      { key: "announcement_active", value: tempAnnouncementActive ? "true" : "false", updated_at: new Date().toISOString() },
+      { key: "announcement_text", value: tempAnnouncementText.trim(), updated_at: new Date().toISOString() },
+      { key: "cancel_limit_hours", value: tempCancelLimitHours.trim(), updated_at: new Date().toISOString() },
+    ];
+
+    const { error } = await supabase.from("settings").upsert(updates);
+    if (error) alert("設定儲存失敗：" + error.message);
+    else {
+      setVenueName(tempVenueName.trim());
+      setAdminUser(tempAdminUser.trim());
+      setAdminPass(tempAdminPass.trim());
+      setLineUrl(tempLineUrl.trim());
+      setAnnouncementActive(tempAnnouncementActive);
+      setAnnouncementText(tempAnnouncementText.trim());
+      setCancelLimitHours(tempCancelLimitHours.trim());
+      alert("✅ 設定已成功同步至資料庫！");
+    }
+  };
+
   const todayCheckInList = useMemo(() => {
-    const today = new Date();
-    today.setMinutes(today.getMinutes() - today.getTimezoneOffset());
-    const todayStr = today.toISOString().split("T")[0];
+    const todayStr = getLocalYYYYMMDD(new Date());
 
     const list: any[] = [];
     openPlaySessions.forEach((session) => {
@@ -489,15 +537,16 @@ export default function AdminPage() {
         });
       }
     });
-    courtBookings.forEach((b) => {
+    // 這裡同樣使用 rawCourtBookings 來計算今日簽到，避免合併時遺漏
+    rawCourtBookings.forEach((b) => {
       if (b.booking_date === todayStr && b.status === "booked") {
-        list.push({ id: b.ids[0], ids: b.ids, tableName: "court_bookings", type: "場地", title: b.courts?.name || "球場", time: `${b.start_time?.slice(0, 5)} - ${b.end_time?.slice(0, 5)}`, name: b.users?.name || "未填寫", phone: b.users?.phone || "", price: b.totalPrice || 250, paymentStatus: b.payment_status, paymentMethod: b.payment_method, isCheckedIn: !!b.is_checked_in, notes: `${b.ids.length * 0.5}h` });
+        list.push({ id: b.id, ids: [b.id], tableName: "court_bookings", type: "場地", title: b.courts?.name || "球場", time: `${b.start_time?.slice(0, 5)} - ${b.end_time?.slice(0, 5)}`, name: b.users?.name || "未填寫", phone: b.users?.phone || "", price: b.price || 250, paymentStatus: b.payment_status, paymentMethod: b.payment_method, isCheckedIn: !!b.is_checked_in, notes: `0.5h` });
       }
     });
     if (!checkInKeyword.trim()) return list;
     const kw = checkInKeyword.trim().toLowerCase();
     return list.filter((item) => item.name.toLowerCase().includes(kw) || item.phone.includes(kw));
-  }, [openPlaySessions, classesList, courtBookings, checkInKeyword]);
+  }, [openPlaySessions, classesList, rawCourtBookings, checkInKeyword]);
 
   const handleToggleCheckIn = async (tableName: string, id: string | number) => {
     try {
@@ -512,30 +561,27 @@ export default function AdminPage() {
     if (!dateStr) return false;
 
     const now = new Date();
-    now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
-    const todayStr = now.toISOString().split("T")[0];
+    const todayStr = getLocalYYYYMMDD(now);
 
     if (dateFilter === 'today') return dateStr === todayStr;
-
-    const targetDate = new Date(dateStr);
 
     if (dateFilter === 'week') {
       const startOfWeek = new Date(now);
       const day = startOfWeek.getDay();
       const diff = startOfWeek.getDate() - day + (day === 0 ? -6 : 1);
       startOfWeek.setDate(diff);
-      const startOfWeekStr = startOfWeek.toISOString().split("T")[0];
+      const startOfWeekStr = getLocalYYYYMMDD(startOfWeek);
 
       const endOfWeek = new Date(startOfWeek);
       endOfWeek.setDate(endOfWeek.getDate() + 6);
-      const endOfWeekStr = endOfWeek.toISOString().split("T")[0];
+      const endOfWeekStr = getLocalYYYYMMDD(endOfWeek);
 
       return dateStr >= startOfWeekStr && dateStr <= endOfWeekStr;
     }
 
     if (dateFilter === 'month') {
-      const targetMonth = targetDate.toISOString().slice(0, 7);
-      const currentMonth = now.toISOString().slice(0, 7);
+      const targetMonth = dateStr.slice(0, 7);
+      const currentMonth = todayStr.slice(0, 7);
       return targetMonth === currentMonth;
     }
 
@@ -552,9 +598,10 @@ export default function AdminPage() {
     let courtRev = 0; let openPlayRev = 0; let classRev = 0;
     let courtPendingCount = 0; let openPlayPendingCount = 0; let classPendingCount = 0;
 
-    courtBookings.forEach((b) => {
+    // 🌟 改用 rawCourtBookings 計算，確保每一筆半小時的預約金額都被精準累加
+    rawCourtBookings.forEach((b) => {
       if (b.status === 'booked' && isInDateRange(b.booking_date)) {
-        const amt = b.totalPrice || 0;
+        const amt = b.price || 250;
         totalEstimated += amt; courtRev += amt;
         if (b.payment_status === 'paid') totalCollected += amt;
         else { totalPending += amt; courtPendingCount += 1; }
@@ -595,9 +642,11 @@ export default function AdminPage() {
   const handleExportCSV = () => {
     const csvRows = [];
     csvRows.push(["日期", "類別", "項目名稱", "姓名", "電話", "付款方式", "金額", "收款狀態"]);
-    courtBookings.forEach((b) => {
+
+    // 🌟 報表也改用 rawCourtBookings 匯出
+    rawCourtBookings.forEach((b) => {
       if (b.status === 'booked' && isInDateRange(b.booking_date)) {
-        csvRows.push([b.booking_date, "場地租借", `${b.courts?.name} (${b.start_time?.slice(0, 5)}-${b.end_time?.slice(0, 5)})`, b.users?.name || '', b.users?.phone || '', b.payment_method === 'online' ? '線上付款' : '現場付款', b.totalPrice || 250, b.payment_status === 'paid' ? '已收款' : '待收款']);
+        csvRows.push([b.booking_date, "場地租借", `${b.courts?.name} (${b.start_time?.slice(0, 5)}-${b.end_time?.slice(0, 5)})`, b.users?.name || '', b.users?.phone || '', b.payment_method === 'online' ? '線上付款' : '現場付款', b.price || 250, b.payment_status === 'paid' ? '已收款' : '待收款']);
       }
     });
     openPlaySessions.forEach((session) => {
@@ -627,7 +676,6 @@ export default function AdminPage() {
     document.body.appendChild(link); link.click(); document.body.removeChild(link);
   };
 
-  // 🌟 新增歷史區間專用的報表匯出功能
   const handleExportHistoryCSV = () => {
     if (historyResults.length === 0) return alert("目前沒有資料可供匯出！");
 
@@ -921,7 +969,7 @@ export default function AdminPage() {
       </header>
 
       <div className="p-5 space-y-4">
-        {/* 排序：第一排 營收、歷史、設定；第二排 場地、臨打、課程 */}
+        {/* 導覽列：兩排固定順序 */}
         <div className="grid grid-cols-3 gap-1.5 bg-gray-200 p-1.5 rounded-xl">
           <button onClick={() => setActiveTab('dashboard')} className={`py-2 text-xs font-bold rounded-lg transition-all ${activeTab === 'dashboard' ? 'shadow-sm bg-white text-gray-900' : 'opacity-60 text-gray-600'}`}>📊 營收</button>
           <button onClick={() => setActiveTab('history')} className={`py-2 text-xs font-bold rounded-lg transition-all ${activeTab === 'history' ? 'shadow-sm bg-white text-indigo-600' : 'opacity-60 text-gray-600'}`}>📜 歷史</button>
@@ -939,7 +987,9 @@ export default function AdminPage() {
           </div>
         ) : (
           <>
-            {/* 歷史紀錄調閱分頁 */}
+            {/* ========================================================================= */}
+            {/* 📜 歷史紀錄調閱分頁 */}
+            {/* ========================================================================= */}
             {activeTab === 'history' && (
               <div className="space-y-4 animate-in fade-in pb-10">
                 <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-200 space-y-3">
@@ -952,19 +1002,17 @@ export default function AdminPage() {
                     <input type="date" value={historyEndDate} onChange={(e) => setHistoryEndDate(e.target.value)} className="flex-1 bg-gray-50 border p-2 rounded-lg text-xs" style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }} />
                   </div>
                   <div className="flex gap-2">
-                    {/* 🌟 調整下拉式選單順序：全部、場地、臨打、課程 */}
                     <select value={historyType} onChange={(e) => setHistoryType(e.target.value as any)} className="flex-1 bg-gray-50 border p-2 rounded-lg text-xs font-bold" style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}>
                       <option value="all">全部</option>
-                      <option value="courts">🎾 場地租借</option>
-                      <option value="open_plays">👥 臨打活動</option>
-                      <option value="classes">🎓 體驗課程</option>
+                      <option value="courts">場地租借</option>
+                      <option value="open_plays">臨打活動</option>
+                      <option value="classes">體驗課程</option>
                     </select>
                     <button onClick={fetchHistoryData} disabled={isFetchingHistory} className="bg-gray-800 text-white px-4 py-2 rounded-lg text-xs font-bold disabled:opacity-50">
                       {isFetchingHistory ? '查詢中...' : '查詢'}
                     </button>
                   </div>
 
-                  {/* 🌟 新增歷史區間報表匯出按鈕 */}
                   <button
                     onClick={handleExportHistoryCSV}
                     className="w-full flex items-center justify-center gap-2 bg-indigo-600 text-white font-bold py-3 rounded-xl shadow-sm hover:bg-indigo-700 transition active:scale-95 text-sm mt-3"
@@ -978,7 +1026,6 @@ export default function AdminPage() {
                     <p className="text-center text-xs text-gray-400 py-5">無符合條件的歷史紀錄</p>
                   ) : (
                     historyResults.map((item) => {
-                      // 渲染 課程 / 臨打
                       if (item._itemType === 'open_plays' || item._itemType === 'classes') {
                         const isClass = item._itemType === 'classes';
                         const dateField = isClass ? item.class_date : item.session_date;
@@ -989,9 +1036,8 @@ export default function AdminPage() {
                             <div className="flex justify-between items-start border-b pb-2 mb-2">
                               <div>
                                 <div className="flex items-center gap-1.5 mb-1">
-                                  {/* 標示類型的彩色 Tag */}
                                   <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${isClass ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>
-                                    {isClass ? '課程' : '臨打'}
+                                    {isClass ? '體驗課程' : '臨打活動'}
                                   </span>
                                 </div>
                                 <p className="text-sm font-bold text-gray-800">{item.title}</p>
@@ -1015,14 +1061,13 @@ export default function AdminPage() {
                           </div>
                         )
                       } else {
-                        // 渲染 場地
                         return (
                           <div key={item._itemType + item.ids[0]} className="bg-white p-3 rounded-xl border shadow-sm">
                             <div className="flex justify-between items-start">
                               <div>
                                 <div className="flex items-center gap-1.5 mb-1">
                                   <span className="text-[10px] px-1.5 py-0.5 rounded font-bold bg-emerald-100 text-emerald-700">
-                                    場地
+                                    場地租借
                                   </span>
                                 </div>
                                 <p className="text-sm font-bold text-gray-800">{item.courts?.name}</p>
@@ -1045,6 +1090,9 @@ export default function AdminPage() {
               </div>
             )}
 
+            {/* ========================================================================= */}
+            {/* 📊 營收分頁 */}
+            {/* ========================================================================= */}
             {activeTab === 'dashboard' && (
               <div className="space-y-4 animate-in fade-in">
                 <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm space-y-3">
@@ -1080,10 +1128,10 @@ export default function AdminPage() {
                             <div className="flex items-center gap-1.5">
                               <span
                                 className={`text-[10px] px-1.5 py-0.2 rounded font-bold ${item.type === "臨打"
-                                    ? "bg-blue-100 text-blue-700"
-                                    : item.type === "課程"
-                                      ? "bg-orange-100 text-orange-700"
-                                      : "bg-emerald-100 text-emerald-700"
+                                  ? "bg-blue-100 text-blue-700"
+                                  : item.type === "課程"
+                                    ? "bg-orange-100 text-orange-700"
+                                    : "bg-emerald-100 text-emerald-700"
                                   }`}
                               >
                                 {item.type}
@@ -1100,8 +1148,8 @@ export default function AdminPage() {
                             <button
                               onClick={() => handleToggleCheckIn(item.tableName, item.id)}
                               className={`text-[11px] font-bold w-14 py-1.5 rounded-lg border transition flex items-center justify-center ${item.isCheckedIn
-                                  ? "bg-gray-800 text-white border-gray-900 shadow-sm"
-                                  : "bg-gray-100 text-gray-600 border-gray-300 hover:bg-gray-200"
+                                ? "bg-gray-800 text-white border-gray-900 shadow-sm"
+                                : "bg-gray-100 text-gray-600 border-gray-300 hover:bg-gray-200"
                                 }`}
                             >
                               {item.isCheckedIn ? "已簽到" : "簽到"}
@@ -1114,8 +1162,8 @@ export default function AdminPage() {
                                 else handleToggleOpenPlayPayment(item.id, item.paymentStatus);
                               }}
                               className={`text-[11px] font-bold w-14 py-1.5 rounded-lg border transition flex items-center justify-center ${item.paymentStatus === "paid"
-                                  ? "bg-emerald-50 text-emerald-700 border-emerald-300 shadow-sm"
-                                  : "bg-amber-50 text-amber-800 border-amber-300 shadow-sm"
+                                ? "bg-emerald-50 text-emerald-700 border-emerald-300 shadow-sm"
+                                : "bg-amber-50 text-amber-800 border-amber-300 shadow-sm"
                                 }`}
                             >
                               {item.paymentStatus === "paid" ? "已收" : "未收"}
@@ -1185,7 +1233,6 @@ export default function AdminPage() {
                   <Download size={16} /> 匯出當前報表 (Google 試算表格式)
                 </button>
 
-                {/* 🌟 調整順序：場地 -> 臨打 -> 課程 */}
                 <div className="bg-amber-50 border-2 border-amber-300 p-4 rounded-2xl shadow-sm space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-extrabold text-amber-800 flex items-center gap-1.5">
@@ -1242,7 +1289,6 @@ export default function AdminPage() {
                   </div>
                 </div>
 
-                {/* 🌟 調整順序：場地 -> 臨打 -> 課程 */}
                 <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200 space-y-3">
                   <div className="space-y-3 text-sm">
                     <div className="flex justify-between items-center bg-emerald-50 p-3 rounded-xl border border-emerald-100">
@@ -1270,6 +1316,9 @@ export default function AdminPage() {
               </div>
             )}
 
+            {/* ========================================================================= */}
+            {/* 🎾 場地租借分頁 */}
+            {/* ========================================================================= */}
             {activeTab === 'courts' && (
               <div className="space-y-4">
                 <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm space-y-2">
@@ -1304,7 +1353,7 @@ export default function AdminPage() {
 
                 <div className="space-y-3">
                   {courtBookings.length === 0 ? (
-                    <p className="text-center text-gray-500 mt-5 text-sm">無近期預約紀錄</p>
+                    <p className="text-center text-gray-500 mt-5 text-sm">無近期預約紀錄 (超過7天請至歷史查詢)</p>
                   ) : (
                     courtBookings.map((b, index) => (
                       <div
@@ -1317,8 +1366,8 @@ export default function AdminPage() {
                           <div className="flex items-center gap-2">
                             <span
                               className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${b.payment_method === 'online'
-                                  ? 'bg-green-100 text-green-700'
-                                  : 'bg-gray-200 text-gray-700'
+                                ? 'bg-green-100 text-green-700'
+                                : 'bg-gray-200 text-gray-700'
                                 }`}
                             >
                               {b.payment_method === 'online' ? '📱 線上付款' : '💵 現場付款'}
@@ -1349,8 +1398,8 @@ export default function AdminPage() {
                             <button
                               onClick={() => handleToggleCourtPayment(b.ids, b.payment_status)}
                               className={`flex-1 text-xs font-bold py-2 rounded-lg border transition flex items-center justify-center gap-1 ${b.payment_status === 'paid'
-                                  ? 'bg-emerald-500 text-white border-emerald-600'
-                                  : 'bg-amber-100 text-amber-800 border-amber-300'
+                                ? 'bg-emerald-500 text-white border-emerald-600'
+                                : 'bg-amber-100 text-amber-800 border-amber-300'
                                 }`}
                             >
                               <DollarSign size={14} />
@@ -1378,7 +1427,9 @@ export default function AdminPage() {
               </div>
             )}
 
-            {/* 🎓 課程分頁 */}
+            {/* ========================================================================= */}
+            {/* 🎓 體驗課程分頁 */}
+            {/* ========================================================================= */}
             {activeTab === 'classes' && (
               <div className="space-y-4">
                 {showClassVisualSchedule ? (
@@ -1439,8 +1490,8 @@ export default function AdminPage() {
                                     key={c.id}
                                     onClick={() => toggleClassCellSelection(cellKey)}
                                     className={`border-b border-l p-1 cursor-pointer transition select-none ${isSelected
-                                        ? 'bg-orange-500 text-white font-bold'
-                                        : 'bg-green-50 text-green-700 hover:bg-green-200 font-medium'
+                                      ? 'bg-orange-500 text-white font-bold'
+                                      : 'bg-green-50 text-green-700 hover:bg-green-200 font-medium'
                                       }`}
                                   >
                                     {isSelected ? '已選' : '空檔'}
@@ -1596,7 +1647,7 @@ export default function AdminPage() {
                 )}
 
                 {classesList.length === 0 ? (
-                  <p className="text-center text-gray-500 mt-10">無近期課程場次</p>
+                  <p className="text-center text-gray-500 mt-10">無近期課程場次 (超過7天請至歷史查詢)</p>
                 ) : (
                   classesList.map((cls) => {
                     const activeBookings = cls.class_bookings?.filter((b: any) => b.status !== 'cancelled') || [];
@@ -1788,8 +1839,8 @@ export default function AdminPage() {
 
                                     <span
                                       className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${booking.payment_method === 'online'
-                                          ? 'bg-green-100 text-green-700'
-                                          : 'bg-gray-200 text-gray-700'
+                                        ? 'bg-green-100 text-green-700'
+                                        : 'bg-gray-200 text-gray-700'
                                         }`}
                                     >
                                       {booking.payment_method === 'online' ? '📱 線上付款' : '💵 現場付款'}
@@ -1809,8 +1860,8 @@ export default function AdminPage() {
                                   <button
                                     onClick={() => handleToggleClassPayment(booking.id, booking.payment_status)}
                                     className={`text-xs font-bold px-2.5 py-1.5 rounded-lg border transition flex items-center gap-1 ${booking.payment_status === 'paid'
-                                        ? 'bg-emerald-500 text-white border-emerald-600'
-                                        : 'bg-amber-100 text-amber-800 border-amber-300'
+                                      ? 'bg-emerald-500 text-white border-emerald-600'
+                                      : 'bg-amber-100 text-amber-800 border-amber-300'
                                       }`}
                                   >
                                     <DollarSign size={14} />
@@ -1835,6 +1886,9 @@ export default function AdminPage() {
               </div>
             )}
 
+            {/* ========================================================================= */}
+            {/* 👥 臨打活動分頁 */}
+            {/* ========================================================================= */}
             {activeTab === 'open_plays' && (
               <div className="space-y-4">
                 {showVisualSchedule ? (
@@ -1895,8 +1949,8 @@ export default function AdminPage() {
                                     key={c.id}
                                     onClick={() => toggleCellSelection(cellKey)}
                                     className={`border-b border-l p-1 cursor-pointer transition select-none ${isSelected
-                                        ? 'bg-blue-500 text-white font-bold'
-                                        : 'bg-green-50 text-green-700 hover:bg-green-200 font-medium'
+                                      ? 'bg-blue-500 text-white font-bold'
+                                      : 'bg-green-50 text-green-700 hover:bg-green-200 font-medium'
                                       }`}
                                   >
                                     {isSelected ? '已選' : '空檔'}
@@ -2083,7 +2137,7 @@ export default function AdminPage() {
                 )}
 
                 {openPlaySessions.length === 0 ? (
-                  <p className="text-center text-gray-500 mt-10">無近期臨打場次</p>
+                  <p className="text-center text-gray-500 mt-10">無近期臨打場次 (超過7天請至歷史查詢)</p>
                 ) : (
                   openPlaySessions.map((session) => {
                     const activePlayers = session.open_play_players?.filter((p: any) => p.status !== 'cancelled') || [];
@@ -2311,8 +2365,8 @@ export default function AdminPage() {
                                   <div className="flex items-center gap-2 flex-wrap">
                                     <span
                                       className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${player.status === 'registered'
-                                          ? 'bg-blue-100 text-blue-700'
-                                          : 'bg-amber-100 text-amber-700'
+                                        ? 'bg-blue-100 text-blue-700'
+                                        : 'bg-amber-100 text-amber-700'
                                         }`}
                                     >
                                       {player.status === 'registered' ? '正取' : '候補'}
@@ -2322,8 +2376,8 @@ export default function AdminPage() {
 
                                     <span
                                       className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${player.payment_method === 'online'
-                                          ? 'bg-green-100 text-green-700'
-                                          : 'bg-gray-200 text-gray-700'
+                                        ? 'bg-green-100 text-green-700'
+                                        : 'bg-gray-200 text-gray-700'
                                         }`}
                                     >
                                       {player.payment_method === 'online' ? '📱 線上付款' : '💵 現場付款'}
@@ -2340,8 +2394,8 @@ export default function AdminPage() {
                                     <button
                                       onClick={() => handleToggleOpenPlayPayment(player.id, player.payment_status)}
                                       className={`text-xs font-bold px-2.5 py-1.5 rounded-lg border transition flex items-center gap-1 ${player.payment_status === 'paid'
-                                          ? 'bg-emerald-500 text-white border-emerald-600'
-                                          : 'bg-amber-100 text-amber-800 border-amber-300'
+                                        ? 'bg-emerald-500 text-white border-emerald-600'
+                                        : 'bg-amber-100 text-amber-800 border-amber-300'
                                         }`}
                                     >
                                       <DollarSign size={14} />
@@ -2376,7 +2430,9 @@ export default function AdminPage() {
               </div>
             )}
 
-            {/* 設定分頁 */}
+            {/* ========================================================================= */}
+            {/* ⚙️ 設定分頁 */}
+            {/* ========================================================================= */}
             {activeTab === 'settings' && (
               <div className="space-y-4 animate-in fade-in pb-10">
                 <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200 space-y-4">
@@ -2626,6 +2682,9 @@ export default function AdminPage() {
         )}
       </div>
 
+      {/* ========================================================================= */}
+      {/* 🟢 代客登記 / 模態彈出視窗 */}
+      {/* ========================================================================= */}
       {agentBookingSession && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 animate-in fade-in overflow-y-auto pt-10 pb-10">
           <div className="bg-white rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl animate-in zoom-in-95 my-auto">
