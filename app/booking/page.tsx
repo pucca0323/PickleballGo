@@ -1,13 +1,9 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { supabase } from "../../lib/supabase";
 import Link from "next/link";
 import { ArrowLeft, CalendarDays, MapPin, CheckCircle2, QrCode, Copy, MessageCircle } from "lucide-react";
-
-// 使用瀏覽器本地日期，避免台灣凌晨被 UTC 日期誤判成前一天。
-const localDateString = (date: Date) =>
-  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 
 const generate14Days = () => {
   const days = [];
@@ -15,7 +11,7 @@ const generate14Days = () => {
   for (let i = 0; i < 14; i++) {
     const d = new Date();
     d.setDate(d.getDate() + i);
-    const dateStr = localDateString(d);
+    const dateStr = d.toISOString().split("T")[0];
     days.push({
       dateStr,
       dayNum: d.getDate(),
@@ -58,8 +54,6 @@ export default function BookingPage() {
   const [specialDates, setSpecialDates] = useState<string[]>([]);
 
   const [loading, setLoading] = useState(true);
-  const [slotsLoading, setSlotsLoading] = useState(false);
-  const bookingRequestId = useRef(0);
   const [showForm, setShowForm] = useState(false);
 
   const [name, setName] = useState("");
@@ -68,16 +62,10 @@ export default function BookingPage() {
 
   const [bookingResult, setBookingResult] = useState<any | null>(null);
   const [paymentMode, setPaymentMode] = useState<'select' | 'online' | 'onsite'>('select');
-  const [createdBookingIds, setCreatedBookingIds] = useState<string[]>([]);
+  const [createdBookingIds, setCreatedBookingIds] = useState<number[]>([]);
   const [lineUrl, setLineUrl] = useState("https://lin.ee/your_line_id");
 
-  // 🌟 初始化時，自動從瀏覽器讀取上次記住的姓名與手機
   useEffect(() => {
-    const savedName = localStorage.getItem("pickle_user_name");
-    const savedPhone = localStorage.getItem("pickle_user_phone");
-    if (savedName) setName(savedName);
-    if (savedPhone) setPhone(savedPhone);
-
     const initData = async () => {
       const { data: settingData } = await supabase
         .from("settings")
@@ -104,6 +92,7 @@ export default function BookingPage() {
 
       if (courtsData && courtsData.length > 0) {
         setCourts(courtsData);
+        // 確保抓到的 id 是字串格式的 UUID
         setSelectedCourt(String(courtsData[0].id));
       } else {
         setCourts([]);
@@ -115,64 +104,58 @@ export default function BookingPage() {
   }, []);
 
   const fetchBookings = useCallback(async () => {
-    const requestId = ++bookingRequestId.current;
-    setSelectedSlots([]);
-    setShowForm(false);
-    setBookedSlots([]);
-    if (!selectedDate || !selectedCourt) {
-      setSlotsLoading(false);
+    if (!selectedDate || !selectedCourt) return;
+
+    const { data, error } = await supabase.rpc(
+      "get_public_court_busy_slots",
+      {
+        p_court_id: selectedCourt,
+        p_booking_date: selectedDate,
+      }
+    );
+
+    if (error || !data) {
+      console.error("讀取球場占用時段失敗：", error);
+      // 查詢失敗時不開放預約，避免把已預約的時段誤判為空位。
+      setBookedSlots(timeSlots);
+      setSelectedSlots([]);
+      setShowForm(false);
       return;
     }
-    setSlotsLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from("court_bookings")
-        .select("start_time, end_time")
-        .eq("booking_date", selectedDate)
-        .eq("court_id", selectedCourt)
-        .eq("status", "booked");
 
-      if (requestId !== bookingRequestId.current) return;
-      if (error) throw error;
-      const busySlots = timeSlots.filter((slot) =>
-        (data || []).some((b) =>
-          timeToMins(slot) >= timeToMins(b.start_time) &&
-          timeToMins(slot) < timeToMins(b.end_time)
-        )
-      );
-      setBookedSlots(busySlots);
-    } catch (error) {
-      if (requestId === bookingRequestId.current) {
-        console.error("讀取場地預約失敗", error);
-        setBookedSlots(timeSlots); // 讀取失敗時保守鎖定時段，避免誤判可訂。
-        alert("無法讀取場地時段，請稍後切換日期或場地重試。");
-      }
-    } finally {
-      if (requestId === bookingRequestId.current) setSlotsLoading(false);
-    }
+    const busySlots: string[] = [];
+    data.forEach((booking: { start_time: string; end_time: string }) => {
+      const start = booking.start_time.slice(0, 5);
+      const end = booking.end_time.slice(0, 5);
+      let inRange = false;
+
+      timeSlots.forEach((slot) => {
+        if (slot === start) inRange = true;
+        if (slot === end) inRange = false;
+        if (inRange) busySlots.push(slot);
+      });
+    });
+
+    setBookedSlots(busySlots);
+    setSelectedSlots([]);
+    setShowForm(false);
   }, [selectedDate, selectedCourt, timeSlots]);
 
   useEffect(() => {
     fetchBookings();
-    return () => { bookingRequestId.current += 1; };
   }, [fetchBookings]);
 
   const toggleSlot = (time: string) => {
-    if (slotsLoading) return;
-    const next = selectedSlots.includes(time)
-      ? selectedSlots.filter((t) => t !== time)
-      : [...selectedSlots, time].sort();
-    // 單次 RPC 只接受起訖範圍，因此前端不允許不連續的選取。
-    if (next.some((slot, i) => i > 0 && timeToMins(slot) - timeToMins(next[i - 1]) !== 30)) {
-      alert("請選擇連續時段；若要分開預約，請分兩次送出。");
-      return;
+    if (selectedSlots.includes(time)) {
+      setSelectedSlots(selectedSlots.filter((t) => t !== time));
+    } else {
+      setSelectedSlots([...selectedSlots, time].sort());
     }
-    setSelectedSlots(next);
   };
 
   const isSlotExpired = (dateStr: string, timeSlot: string) => {
     const now = new Date();
-    const todayStr = localDateString(now);
+    const todayStr = now.toISOString().split("T")[0];
     if (dateStr !== todayStr) return false;
 
     const [slotH, slotM] = timeSlot.split(':').map(Number);
@@ -205,19 +188,14 @@ export default function BookingPage() {
   };
 
   const totalHours = selectedSlots.length * 0.5;
-  const displayTotalPrice = selectedSlots.reduce((sum, slot) => sum + getSlotPrice(selectedDate, slot), 0);
+  const displayTotalPrice = selectedSlots.reduce((sum, slot) => {
+    return sum + getSlotPrice(selectedDate, slot);
+  }, 0);
 
   const handleBooking = async (e: React.FormEvent) => {
     e.preventDefault();
     if (selectedSlots.length === 0 || !name.trim() || !phone.trim() || !selectedCourt) {
       return alert("請填寫完整資訊！");
-    }
-    if (slotsLoading || selectedSlots.some((slot, i) =>
-      bookedSlots.includes(slot) ||
-      (i > 0 && timeToMins(slot) - timeToMins(selectedSlots[i - 1]) !== 30)
-    )) {
-      alert("預約時段不連續或已有預約，請重新選擇。");
-      return;
     }
     setIsSubmitting(true);
 
@@ -240,6 +218,7 @@ export default function BookingPage() {
       const endM = (endMins % 60).toString().padStart(2, '0');
       const endTime = `${endH}:${endM}`;
 
+      // 嚴格確保 p_court_id 是字串 UUID
       const cleanCourtId = String(selectedCourt);
 
       const { data, error } = await supabase.rpc("secure_book_court", {
@@ -259,18 +238,11 @@ export default function BookingPage() {
         return;
       }
 
-      // 🌟 預約成功後，將姓名與手機儲存至瀏覽器本地記憶
-      try {
-        localStorage.setItem("pickle_user_name", name.trim());
-        localStorage.setItem("pickle_user_phone", phone.trim());
-      } catch { /* 隱私模式可能停用儲存，不應影響已成功的預約 */ }
-
       const serverPrice = data.price !== undefined ? data.price : displayTotalPrice;
       const ids = data.booking_ids || [];
       setCreatedBookingIds(ids);
 
       const currentCourt = courts.find((c) => String(c.id) === cleanCourtId);
-
       setBookingResult({
         courtName: currentCourt?.name || '場地',
         date: selectedDate,
@@ -282,10 +254,10 @@ export default function BookingPage() {
       });
 
       setPaymentMode('select');
-      if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
-      window.scrollTo({ top: 0, behavior: "instant" });
       setSelectedSlots([]);
       setShowForm(false);
+      setName("");
+      setPhone("");
       fetchBookings();
     } catch (error: any) {
       alert("預約失敗，錯誤：" + (error.message || "系統錯誤"));
@@ -294,34 +266,14 @@ export default function BookingPage() {
     }
   };
 
-  const [savingPayment, setSavingPayment] = useState(false);
   const updatePaymentMethod = async (method: 'online' | 'onsite') => {
-    if (savingPayment) return;
-    setSavingPayment(true);
-    try {
-      if (createdBookingIds.length > 0) {
-        const { data, error } = await supabase.rpc("update_my_payment_method", {
-          p_table_name: "court_bookings",
-          p_booking_ids: createdBookingIds.map(String),
-          p_phone: bookingResult?.phone || phone.trim(),
-          p_payment_method: method
-        });
-        if (error) throw error;
-        if (data && typeof data === "object" && "success" in data && !data.success) {
-          throw new Error(data.message || "更新付款方式失敗");
-        }
-      }
-      setPaymentMode(method);
-    } catch (error: any) {
-      alert("付款方式儲存失敗：" + (error.message || "請稍後重試"));
-    } finally {
-      setSavingPayment(false);
+    setPaymentMode(method);
+    if (createdBookingIds.length > 0) {
+      await supabase
+        .from("court_bookings")
+        .update({ payment_method: method })
+        .in("id", createdBookingIds);
     }
-  };
-
-  const closeBookingResult = () => {
-    setBookingResult(null);
-    window.scrollTo({ top: 0, behavior: "instant" });
   };
 
   const handleCopyText = async () => {
@@ -344,12 +296,12 @@ export default function BookingPage() {
   };
 
   return (
-    <main className="min-h-screen max-w-md mx-auto bg-gray-50 flex flex-col relative pb-32 max-sm:w-full max-sm:min-w-0 max-sm:overflow-x-clip">
+    <main className="min-h-screen max-w-md mx-auto bg-gray-50 flex flex-col relative pb-32">
       <header className="bg-emerald-600 text-white p-4 flex items-center shadow-md relative z-10">
         <Link href="/" className="mr-4 hover:bg-emerald-700 p-2 rounded-full transition">
           <ArrowLeft size={24} />
         </Link>
-        <h1 className="text-xl font-bold">場地預約 (動態費率)</h1>
+        <h1 className="text-xl font-bold">場地預約</h1>
       </header>
 
       {/* 1. 日期選擇 */}
@@ -373,7 +325,7 @@ export default function BookingPage() {
             return (
               <button
                 key={d.dateStr}
-                onClick={() => { setSlotsLoading(true); setSelectedSlots([]); setShowForm(false); setSelectedDate(d.dateStr); }}
+                onClick={() => setSelectedDate(d.dateStr)}
                 className={`flex-shrink-0 flex flex-col items-center justify-center w-16 h-20 rounded-2xl border transition-all relative ${btnBgClass}`}
               >
                 <span className={`text-xs mb-1 ${isSelected ? 'text-emerald-100' : isWeekend ? 'text-amber-700 font-bold' : 'text-gray-400'}`}>
@@ -399,7 +351,7 @@ export default function BookingPage() {
             {courts.map((c) => (
               <button
                 key={c.id}
-                onClick={() => { setSlotsLoading(true); setSelectedSlots([]); setShowForm(false); setSelectedCourt(String(c.id)); }}
+                onClick={() => setSelectedCourt(String(c.id))}
                 className={`flex-shrink-0 px-4 py-2 rounded-full text-sm font-bold flex items-center transition-all ${selectedCourt === String(c.id)
                     ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
                     : 'bg-gray-100 text-gray-500 border border-transparent'
@@ -421,10 +373,10 @@ export default function BookingPage() {
             {specialDates.includes(selectedDate) ? '國定假日費率' : getDayType(selectedDate) === 'weekend' ? '假日費率' : '平日費率'}
           </span>
         </h2>
-        {loading || slotsLoading ? (
+        {loading ? (
           <p className="text-center text-gray-500 animate-pulse mt-5">讀取時段中...</p>
         ) : (
-          <div className="grid grid-cols-4 gap-2 max-sm:min-w-0">
+          <div className="grid grid-cols-4 gap-2">
             {timeSlots.map((time) => {
               const isBooked = bookedSlots.includes(time);
               const isExpired = isSlotExpired(selectedDate, time);
@@ -456,7 +408,7 @@ export default function BookingPage() {
 
       {/* 底部動態計費與報名表單 */}
       {selectedSlots.length > 0 && (
-        <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md max-sm:max-h-[85dvh] max-sm:overflow-y-auto max-sm:overscroll-contain bg-white border-t border-gray-200 shadow-[0_-10px_15px_-3px_rgba(0,0,0,0.1)] z-20 animate-in slide-in-from-bottom-5">
+        <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-white border-t border-gray-200 shadow-[0_-10px_15px_-3px_rgba(0,0,0,0.1)] z-20 animate-in slide-in-from-bottom-5">
           <div className="p-4">
             {showForm ? (
               <form onSubmit={handleBooking} className="space-y-3 mb-2">
@@ -464,7 +416,7 @@ export default function BookingPage() {
                   type="text"
                   required
                   placeholder="姓名 / 暱稱"
-                  className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-3 text-sm max-sm:text-base max-sm:min-w-0 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
                   value={name}
                   onChange={(e) => setName(e.target.value)}
@@ -474,7 +426,7 @@ export default function BookingPage() {
                   required
                   placeholder="手機號碼 (例如: 0912345678)"
                   pattern="[0-9]{10}"
-                  className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-3 text-sm max-sm:text-base max-sm:min-w-0 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
@@ -497,7 +449,7 @@ export default function BookingPage() {
                 </div>
               </form>
             ) : (
-              <div className="flex justify-between items-center max-sm:gap-2 max-sm:min-w-0">
+              <div className="flex justify-between items-center">
                 <div>
                   <p className="text-xs text-gray-500 mb-1">
                     預估費用 <span className="font-bold text-gray-800">{totalHours}</span> 小時
@@ -506,7 +458,7 @@ export default function BookingPage() {
                 </div>
                 <button
                   onClick={() => setShowForm(true)}
-                  className="bg-gray-900 text-white px-8 py-3.5 max-sm:px-5 max-sm:shrink-0 rounded-xl font-bold shadow-md hover:bg-black transition-colors active:scale-95"
+                  className="bg-gray-900 text-white px-8 py-3.5 rounded-xl font-bold shadow-md hover:bg-black transition-colors active:scale-95"
                 >
                   下一步
                 </button>
@@ -518,9 +470,9 @@ export default function BookingPage() {
 
       {/* 預約成功付款 Modal */}
       {bookingResult && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 animate-in fade-in overflow-y-auto pt-10 pb-10 max-sm:py-4 max-sm:items-start">
-          <div className="bg-white rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl animate-in zoom-in-95 my-auto max-sm:my-auto max-sm:max-h-[calc(100dvh-2rem)] max-sm:overflow-y-auto max-sm:overscroll-contain">
-            <div className="p-5 text-center bg-emerald-600 max-sm:break-words">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 animate-in fade-in overflow-y-auto pt-10 pb-10">
+          <div className="bg-white rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl animate-in zoom-in-95 my-auto">
+            <div className="p-5 text-center bg-emerald-600">
               <CheckCircle2 size={48} className="mx-auto text-white mb-2" />
               <h2 className="text-xl font-bold text-white">預約成功！</h2>
               <p className="text-white/90 text-sm mt-1">{bookingResult.courtName}</p>
@@ -532,14 +484,12 @@ export default function BookingPage() {
                   <h3 className="font-bold text-center text-gray-800 mb-2">請選擇付款方式</h3>
                   <button
                     onClick={() => updatePaymentMethod('online')}
-                    disabled={savingPayment}
                     className="w-full flex items-center justify-center gap-2 bg-green-50 text-green-700 border-2 border-green-500 font-bold py-3.5 rounded-xl hover:bg-green-100 transition"
                   >
                     <QrCode size={20} /> 線上掃碼 (LINE Pay / TWQR)
                   </button>
                   <button
                     onClick={() => updatePaymentMethod('onsite')}
-                    disabled={savingPayment}
                     className="w-full flex items-center justify-center gap-2 bg-gray-50 text-gray-700 border-2 border-gray-300 font-bold py-3.5 rounded-xl hover:bg-gray-100 transition"
                   >
                     現場付款
@@ -554,7 +504,7 @@ export default function BookingPage() {
                     請於開打前 10 分鐘至櫃檯完成現金付款！
                   </p>
                   <button
-                    onClick={closeBookingResult}
+                    onClick={() => setBookingResult(null)}
                     className="w-full bg-gray-800 text-white font-bold py-3 rounded-xl"
                   >
                     完成
@@ -566,8 +516,7 @@ export default function BookingPage() {
                 <div className="space-y-3">
                   <div className="bg-gray-100 rounded-xl aspect-square flex flex-col items-center justify-center border-2 border-dashed border-gray-300 p-4 mb-2">
                     <QrCode size={48} className="text-gray-400 mb-2" />
-                    <p className="text-sm text-gray-500 font-bold">請於此處放置館方的</p>
-                    <p className="text-sm text-gray-500 font-bold">LINE Pay / TWQR 條碼圖</p>
+                    <p className="text-sm text-gray-500 font-bold">Please place the venue's QR code here</p>
                   </div>
 
                   <div className="bg-emerald-50 border border-emerald-200 p-3 rounded-lg text-sm text-emerald-800 text-center mb-2">
@@ -592,7 +541,7 @@ export default function BookingPage() {
                   </a>
 
                   <button
-                    onClick={closeBookingResult}
+                    onClick={() => setBookingResult(null)}
                     className="w-full text-gray-500 font-bold py-2 hover:text-gray-800 mt-2"
                   >
                     關閉視窗
