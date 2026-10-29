@@ -12,7 +12,6 @@ import {
   XCircle,
   Edit2,
   Check,
-  QrCode,
   Copy,
   MessageCircle,
   Lock,
@@ -291,10 +290,9 @@ export default function MyBookingsPage() {
     }
   };
 
-  // 🌟 修改：將按鈕改為「開啟付款選項」
-  const paymentButtons = (item: PaymentInfo, paymentMethod: string, status: string) => {
-    // 只有當付款方式為 online 且尚未付款時，才顯示綠色的前往付款按鈕
-    if (paymentMethod === 'online' && status !== 'paid') {
+  // 🌟 修正：只要狀態是「未付款」，就顯示綠色的前往付款按鈕 (移除了 paymentMethod === 'online' 的限制)
+  const paymentButtons = (item: PaymentInfo, status: string) => {
+    if (status !== 'paid') {
       return (
         <div className="mt-3 min-w-0">
           <button type="button" onClick={() => setActivePaymentModal(item)}
@@ -434,7 +432,8 @@ export default function MyBookingsPage() {
                         {b.status === 'booked' && (
                           <>
                             {paymentSummary(getCourtPayment(b), b.payment_method, b.payment_status)}
-                            {paymentButtons(getCourtPayment(b), b.payment_method, b.payment_status)}
+                            {/* 🌟 傳入 payment_status 判斷是否顯示按鈕 */}
+                            {paymentButtons(getCourtPayment(b), b.payment_status)}
                           </>
                         )}
 
@@ -502,7 +501,7 @@ export default function MyBookingsPage() {
                           {b.status === 'registered' && (
                             <>
                               {paymentSummary(getPlayPayment(b), b.payment_method, b.payment_status)}
-                              {paymentButtons(getPlayPayment(b), b.payment_method, b.payment_status)}
+                              {paymentButtons(getPlayPayment(b), b.payment_status)}
                             </>
                           )}
 
@@ -614,7 +613,7 @@ export default function MyBookingsPage() {
                         {b.status === 'booked' && (
                           <>
                             {paymentSummary(getClassPayment(b), b.payment_method, b.payment_status)}
-                            {paymentButtons(getClassPayment(b), b.payment_method, b.payment_status)}
+                            {paymentButtons(getClassPayment(b), b.payment_status)}
                           </>
                         )}
 
