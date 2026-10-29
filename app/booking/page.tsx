@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "../../lib/supabase";
 import Link from "next/link";
-import { ArrowLeft, CalendarDays, MapPin, CheckCircle2, QrCode, Copy, MessageCircle } from "lucide-react";
+import { ArrowLeft, CalendarDays, MapPin, CheckCircle2, QrCode, Copy, MessageCircle, CreditCard, Banknote } from "lucide-react";
 
 const generate14Days = () => {
   const days = [];
@@ -65,15 +65,36 @@ export default function BookingPage() {
   const [createdBookingIds, setCreatedBookingIds] = useState<number[]>([]);
   const [lineUrl, setLineUrl] = useState("https://lin.ee/your_line_id");
 
+  // 🌟 新增：用來儲存後台抓回來的付款設定
+  const [paymentSettings, setPaymentSettings] = useState({
+    line: "",
+    jko: "",
+    twqr: "",
+    bank: ""
+  });
+
   useEffect(() => {
     const initData = async () => {
+      // 🌟 修改：一次撈出所有需要的設定 (包含原本的 line_url 以及新的 payment_*)
       const { data: settingData } = await supabase
         .from("settings")
-        .select("value")
-        .eq("key", "line_url")
-        .maybeSingle();
-      if (settingData?.value) {
-        setLineUrl(settingData.value);
+        .select("key, value")
+        .in("key", ["line_url", "payment_line", "payment_jko", "payment_twqr", "payment_bank"]);
+
+      if (settingData) {
+        const settingsMap: Record<string, string> = {};
+        settingData.forEach(item => {
+          settingsMap[item.key] = item.value;
+        });
+
+        if (settingsMap["line_url"]) setLineUrl(settingsMap["line_url"]);
+
+        setPaymentSettings({
+          line: settingsMap["payment_line"] || "",
+          jko: settingsMap["payment_jko"] || "",
+          twqr: settingsMap["payment_twqr"] || "",
+          bank: settingsMap["payment_bank"] || ""
+        });
       }
 
       const { data: rulesData } = await supabase.from("pricing_rules").select("*");
@@ -92,7 +113,6 @@ export default function BookingPage() {
 
       if (courtsData && courtsData.length > 0) {
         setCourts(courtsData);
-        // 確保抓到的 id 是字串格式的 UUID
         setSelectedCourt(String(courtsData[0].id));
       } else {
         setCourts([]);
@@ -116,7 +136,6 @@ export default function BookingPage() {
 
     if (error || !data) {
       console.error("讀取球場占用時段失敗：", error);
-      // 查詢失敗時不開放預約，避免把已預約的時段誤判為空位。
       setBookedSlots(timeSlots);
       setSelectedSlots([]);
       setShowForm(false);
@@ -145,7 +164,6 @@ export default function BookingPage() {
     fetchBookings();
   }, [fetchBookings]);
 
-  // 每次只能選取連續的半小時時段，避免誤將未選時段一併預約。
   const areSlotsContinuous = (slots: string[]) => {
     const sorted = [...slots].sort((a, b) => timeToMins(a) - timeToMins(b));
     return sorted.every((slot, index) =>
@@ -235,7 +253,6 @@ export default function BookingPage() {
       const endM = (endMins % 60).toString().padStart(2, '0');
       const endTime = `${endH}:${endM}`;
 
-      // 嚴格確保 p_court_id 是字串 UUID
       const cleanCourtId = String(selectedCourt);
 
       const { data, error } = await supabase.rpc("secure_book_court", {
@@ -300,13 +317,22 @@ export default function BookingPage() {
 📍 場地：${bookingResult.courtName} (${bookingResult.totalHours}小時)
 💰 應繳金額：$${bookingResult.totalPrice}
 ———————————
-✅ 我已完成線上掃碼付款！
-📱 支付方式：LINE Pay / TWQR
-🆔 我的LINE暱稱：＿＿＿＿＿ (請填寫)`;
+✅ 我已完成線上付款！
+📱 支付方式：＿＿＿＿＿ (例如：LINE Pay)
+🆔 帳號後五碼/暱稱：＿＿＿＿＿`;
 
     try {
       await navigator.clipboard.writeText(text);
-      alert("✅ 回報文案已複製！請貼上至官方 LINE 並填寫您的暱稱。");
+      alert("✅ 回報文案已複製！請貼上至官方 LINE 並填寫您的匯款資訊。");
+    } catch {
+      alert("複製失敗，請手動選取複製。");
+    }
+  };
+
+  const handleCopyBankAccount = async () => {
+    try {
+      await navigator.clipboard.writeText(paymentSettings.bank);
+      alert("✅ 銀行帳號已複製！");
     } catch {
       alert("複製失敗，請手動選取複製。");
     }
@@ -370,8 +396,8 @@ export default function BookingPage() {
                 key={c.id}
                 onClick={() => setSelectedCourt(String(c.id))}
                 className={`flex-shrink-0 px-4 py-2 rounded-full text-sm font-bold flex items-center transition-all ${selectedCourt === String(c.id)
-                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                    : 'bg-gray-100 text-gray-500 border border-transparent'
+                  ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                  : 'bg-gray-100 text-gray-500 border border-transparent'
                   }`}
               >
                 <MapPin size={14} className="mr-1" /> {c.name}
@@ -406,10 +432,10 @@ export default function BookingPage() {
                   disabled={isBooked || isExpired || courts.length === 0}
                   onClick={() => toggleSlot(time)}
                   className={`py-2.5 rounded-xl text-xs font-bold border transition-all flex flex-col items-center justify-center ${isBooked || isExpired || courts.length === 0
-                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed border-gray-100'
-                      : isSelected
-                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-inner scale-95'
-                        : 'bg-white text-emerald-700 border-emerald-200 shadow-sm active:scale-95 hover:border-emerald-500'
+                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed border-gray-100'
+                    : isSelected
+                      ? 'bg-emerald-600 text-white border-emerald-600 shadow-inner scale-95'
+                      : 'bg-white text-emerald-700 border-emerald-200 shadow-sm active:scale-95 hover:border-emerald-500'
                     }`}
                 >
                   <span className="text-sm font-black">{time}</span>
@@ -503,7 +529,7 @@ export default function BookingPage() {
                     onClick={() => updatePaymentMethod('online')}
                     className="w-full flex items-center justify-center gap-2 bg-green-50 text-green-700 border-2 border-green-500 font-bold py-3.5 rounded-xl hover:bg-green-100 transition"
                   >
-                    <QrCode size={20} /> 線上掃碼 (LINE Pay / TWQR)
+                    <CreditCard size={20} /> 線上付款 (推薦)
                   </button>
                   <button
                     onClick={() => updatePaymentMethod('onsite')}
@@ -529,39 +555,94 @@ export default function BookingPage() {
                 </div>
               )}
 
+              {/* 🌟 替換 UI：全新的線上付款選項區塊 */}
               {paymentMode === 'online' && (
                 <div className="space-y-3">
-                  <div className="bg-gray-100 rounded-xl aspect-square flex flex-col items-center justify-center border-2 border-dashed border-gray-300 p-4 mb-2">
-                    <QrCode size={48} className="text-gray-400 mb-2" />
-                    <p className="text-sm text-gray-500 font-bold">Please place the venue's QR code here</p>
-                  </div>
-
-                  <div className="bg-emerald-50 border border-emerald-200 p-3 rounded-lg text-sm text-emerald-800 text-center mb-2">
+                  <div className="bg-emerald-50 border border-emerald-200 p-3 rounded-lg text-sm text-emerald-800 text-center mb-3">
                     應繳金額：
-                    <span className="font-bold text-lg text-emerald-600">${bookingResult.totalPrice}</span>
+                    <span className="font-bold text-xl text-emerald-600 ml-1">${bookingResult.totalPrice}</span>
                   </div>
 
-                  <button
-                    onClick={handleCopyText}
-                    className="w-full flex items-center justify-center gap-2 bg-emerald-600 text-white font-bold py-3.5 rounded-xl shadow-md active:scale-95 transition"
-                  >
-                    <Copy size={18} /> 一鍵複製回報訊息
-                  </button>
+                  {paymentSettings.line && (
+                    <a
+                      href={paymentSettings.line}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full flex items-center justify-center gap-2 bg-[#06C755] text-white font-bold py-3.5 rounded-xl shadow hover:bg-[#05b34c] transition"
+                    >
+                      使用 LINE Pay 付款
+                    </a>
+                  )}
 
-                  <a
-                    href={lineUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="w-full flex items-center justify-center gap-2 bg-[#06C755] text-white font-bold py-3.5 rounded-xl shadow-md active:scale-95 transition"
-                  >
-                    <MessageCircle size={18} /> 前往官方 LINE 回報
-                  </a>
+                  {paymentSettings.jko && (
+                    <a
+                      href={paymentSettings.jko}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full flex items-center justify-center gap-2 bg-[#E60012] text-white font-bold py-3.5 rounded-xl shadow hover:bg-[#cc0010] transition"
+                    >
+                      使用 街口支付 付款
+                    </a>
+                  )}
+
+                  {paymentSettings.twqr && (
+                    <a
+                      href={paymentSettings.twqr}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full flex items-center justify-center gap-2 bg-[#005598] text-white font-bold py-3.5 rounded-xl shadow hover:bg-[#004780] transition"
+                    >
+                      使用 台灣 Pay (TWQR) 付款
+                    </a>
+                  )}
+
+                  {paymentSettings.bank && (
+                    <div className="bg-gray-100 p-3 rounded-xl border border-gray-200 mt-2">
+                      <p className="text-xs text-gray-500 font-bold mb-1 flex items-center gap-1">
+                        <Banknote size={14} /> 銀行轉帳帳號
+                      </p>
+                      <div className="flex justify-between items-center gap-2">
+                        <p className="text-sm font-medium text-gray-800 break-all bg-white px-2 py-1.5 rounded border border-gray-300 flex-1">
+                          {paymentSettings.bank}
+                        </p>
+                        <button
+                          onClick={handleCopyBankAccount}
+                          className="bg-gray-200 hover:bg-gray-300 text-gray-700 p-1.5 rounded transition shrink-0"
+                          title="複製帳號"
+                        >
+                          <Copy size={16} />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  <hr className="my-3 border-gray-200" />
+
+                  <p className="text-xs text-center text-gray-500 font-bold">付款完成後，請務必點擊下方按鈕回報！</p>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={handleCopyText}
+                      className="flex items-center justify-center gap-1.5 bg-gray-800 text-white font-bold py-3 rounded-xl shadow-md active:scale-95 transition text-sm"
+                    >
+                      <Copy size={16} /> 複製回報文案
+                    </button>
+
+                    <a
+                      href={lineUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center justify-center gap-1.5 bg-[#06C755] text-white font-bold py-3 rounded-xl shadow-md active:scale-95 transition text-sm"
+                    >
+                      <MessageCircle size={16} /> 前往 LINE 回報
+                    </a>
+                  </div>
 
                   <button
                     onClick={() => setBookingResult(null)}
-                    className="w-full text-gray-500 font-bold py-2 hover:text-gray-800 mt-2"
+                    className="w-full text-gray-400 text-sm font-bold py-2 hover:text-gray-600 mt-1"
                   >
-                    關閉視窗
+                    稍後再說，先關閉視窗
                   </button>
                 </div>
               )}
