@@ -65,7 +65,6 @@ export default function BookingPage() {
   const [createdBookingIds, setCreatedBookingIds] = useState<number[]>([]);
   const [lineUrl, setLineUrl] = useState("https://lin.ee/your_line_id");
 
-  // 🌟 新增：用來儲存後台抓回來的付款設定
   const [paymentSettings, setPaymentSettings] = useState({
     line: "",
     jko: "",
@@ -75,7 +74,6 @@ export default function BookingPage() {
 
   useEffect(() => {
     const initData = async () => {
-      // 🌟 修改：一次撈出所有需要的設定 (包含原本的 line_url 以及新的 payment_*)
       const { data: settingData } = await supabase
         .from("settings")
         .select("key, value")
@@ -323,7 +321,7 @@ export default function BookingPage() {
 
     try {
       await navigator.clipboard.writeText(text);
-      alert("✅ 回報文案已複製！請貼上至官方 LINE 並填寫您的匯款資訊。");
+      alert("✅ 報名資訊已複製！請貼上至官方 LINE 並填寫您的匯款資訊。");
     } catch {
       alert("複製失敗，請手動選取複製。");
     }
@@ -625,7 +623,7 @@ export default function BookingPage() {
                       onClick={handleCopyText}
                       className="flex items-center justify-center gap-1.5 bg-gray-800 text-white font-bold py-3 rounded-xl shadow-md active:scale-95 transition text-sm"
                     >
-                      <Copy size={16} /> 複製回報文案
+                      <Copy size={16} /> 複製報名資訊
                     </button>
 
                     <a
@@ -634,7 +632,7 @@ export default function BookingPage() {
                       rel="noopener noreferrer"
                       className="flex items-center justify-center gap-1.5 bg-[#06C755] text-white font-bold py-3 rounded-xl shadow-md active:scale-95 transition text-sm"
                     >
-                      <MessageCircle size={16} /> 前往 LINE 回報
+                      <MessageCircle size={16} /> 官方 LINE 回報
                     </a>
                   </div>
 
