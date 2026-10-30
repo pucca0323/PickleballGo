@@ -4,30 +4,8 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { supabase } from "../../lib/supabase";
 import Link from "next/link";
 import {
-  ArrowLeft,
-  Lock,
-  Plus,
-  X,
-  Edit,
-  Trash2,
-  CheckCircle,
-  DollarSign,
-  Calendar,
-  CreditCard,
-  AlertCircle,
-  Download,
-  Settings,
-  Copy,
-  UserPlus,
-  Wrench,
-  Search,
-  UserCheck,
-  Clock,
-  Eye,
-  MousePointerClick,
-  CalendarPlus,
-  Users,
-  Filter
+  ArrowLeft, Lock, Plus, X, Edit, Trash2, CheckCircle, DollarSign, Calendar, CreditCard, AlertCircle, Download,
+  Settings, Copy, UserPlus, Wrench, Search, UserCheck, Clock, Eye, MousePointerClick, CalendarPlus, Users, Filter, CheckCircle2, History
 } from "lucide-react";
 
 const getLocalYYYYMMDD = (d: Date) => {
@@ -35,6 +13,12 @@ const getLocalYYYYMMDD = (d: Date) => {
   const month = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+};
+
+const getLocalDatetimeLocal = () => {
+  const d = new Date();
+  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+  return d.toISOString().slice(0, 16);
 };
 
 export default function AdminPage() {
@@ -53,7 +37,6 @@ export default function AdminPage() {
 
   const [checkInKeyword, setCheckInKeyword] = useState("");
 
-  // 🌟 基本設定 State
   const [venueName, setVenueName] = useState("匹克球館");
   const [adminUser, setAdminUser] = useState("admin");
   const [adminPass, setAdminPass] = useState("888");
@@ -62,13 +45,11 @@ export default function AdminPage() {
   const [announcementText, setAnnouncementText] = useState("");
   const [cancelLimitHours, setCancelLimitHours] = useState("3");
 
-  // 🌟 收款設定 State (新增)
   const [paymentLine, setPaymentLine] = useState("");
   const [paymentJko, setPaymentJko] = useState("");
   const [paymentTwqr, setPaymentTwqr] = useState("");
   const [paymentBank, setPaymentBank] = useState("");
 
-  // 🌟 基本設定 Temp State
   const [tempVenueName, setTempVenueName] = useState("匹克球館");
   const [tempAdminUser, setTempAdminUser] = useState("admin");
   const [tempAdminPass, setTempAdminPass] = useState("888");
@@ -77,7 +58,6 @@ export default function AdminPage() {
   const [tempAnnouncementText, setTempAnnouncementText] = useState("");
   const [tempCancelLimitHours, setTempCancelLimitHours] = useState("3");
 
-  // 🌟 收款設定 Temp State (新增)
   const [tempPaymentLine, setTempPaymentLine] = useState("");
   const [tempPaymentJko, setTempPaymentJko] = useState("");
   const [tempPaymentTwqr, setTempPaymentTwqr] = useState("");
@@ -136,6 +116,18 @@ export default function AdminPage() {
   const [isFetchingHistory, setIsFetchingHistory] = useState(false);
   const [historyShowUnpaidOnly, setHistoryShowUnpaidOnly] = useState(false);
 
+  // 🌟 臨打待核帳快篩功能
+  const [openPlayShowReportedOnly, setOpenPlayShowReportedOnly] = useState(false);
+
+  // 🌟 退款模態框 State
+  const [activeRefundPlayer, setActiveRefundPlayer] = useState<any | null>(null);
+  const [refundAmount, setRefundAmount] = useState<number | string>("");
+  const [refundMethod, setRefundMethod] = useState("");
+  const [refundTime, setRefundTime] = useState(getLocalDatetimeLocal());
+  const [refundNote, setRefundNote] = useState("");
+  const [refundConfirmCheck, setRefundConfirmCheck] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   const [newClass, setNewClass] = useState({
     title: '', coach: '', class_date: '', start_time: '14:00', end_time: '16:00', price: 800, max_players: 4, court_id: '', notes: '',
   });
@@ -151,6 +143,14 @@ export default function AdminPage() {
   const [editOpenPlay, setEditOpenPlay] = useState({
     title: '', level: [] as string[], session_date: '', start_time: '', end_time: '', price: 200, max_players: 8, max_waitlist: 2, court_ids: [] as string[], notes: '',
   });
+
+  const getAdminIdentity = async () => {
+    const { data } = await supabase.auth.getUser();
+    return {
+      id: data.user?.id || '00000000-0000-0000-0000-000000000000',
+      name: data.user?.email || 'admin'
+    };
+  };
 
   const fetchSettings = async () => {
     const { data, error } = await supabase.from("settings").select("*");
@@ -208,21 +208,20 @@ export default function AdminPage() {
     now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
 
     if (activeTab === 'dashboard') {
-      if (dateFilter === 'today') {
-        return now.toISOString().split("T")[0];
-      } else if (dateFilter === 'week') {
+      if (dateFilter === 'today') return now.toISOString().split("T")[0];
+      if (dateFilter === 'week') {
         const startOfWeek = new Date(now);
         const day = startOfWeek.getDay();
         const diff = startOfWeek.getDate() - day + (day === 0 ? -6 : 1);
         startOfWeek.setDate(diff);
         return startOfWeek.toISOString().split("T")[0];
-      } else if (dateFilter === 'month') {
+      }
+      if (dateFilter === 'month') {
         const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
         startOfMonth.setMinutes(startOfMonth.getMinutes() - startOfMonth.getTimezoneOffset());
         return startOfMonth.toISOString().split("T")[0];
-      } else if (dateFilter === 'custom') {
-        return customStartDate;
       }
+      if (dateFilter === 'custom') return customStartDate;
     }
 
     const defaultLimit = new Date(now);
@@ -257,7 +256,6 @@ export default function AdminPage() {
 
     if (courtsData) {
       setRawCourtBookings(courtsData);
-
       const groupedCourts = [];
       let currentGroup: any = null;
 
@@ -295,9 +293,19 @@ export default function AdminPage() {
       .order("class_date", { ascending: false });
     if (classesData) setClassesList(classesData);
 
+    // 🌟 擴充臨打抓取的欄位 (包含所有退款與核帳欄位)
     const { data: openPlaysData } = await supabase
       .from("open_play_sessions")
-      .select(`*, courts(name), open_play_players (id, status, created_at, player_notes, payment_method, payment_status, is_checked_in, users (name, phone))`)
+      .select(`
+        *, courts(name), 
+        open_play_players (
+          id, status, created_at, player_notes, payment_method, payment_status, is_checked_in,
+          booking_no, line_nickname, display_name, payment_deadline, payment_report_time, 
+          payment_account_last5, admin_confirm_time, admin_confirmer, 
+          refund_status, refund_amount, refund_method, refund_time, refund_note, 
+          users (name, phone)
+        )
+      `)
       .gte("session_date", limitDateStr)
       .order("session_date", { ascending: false });
     if (openPlaysData) setOpenPlaySessions(openPlaysData);
@@ -351,9 +359,19 @@ export default function AdminPage() {
       }
 
       if (historyType === 'all' || historyType === 'open_plays') {
+        // 🌟 歷史查詢也要補齊擴充欄位
         const { data } = await supabase
           .from("open_play_sessions")
-          .select(`*, courts(name), open_play_players (id, status, payment_status, payment_method, player_notes, users (name, phone))`)
+          .select(`
+            *, courts(name), 
+            open_play_players (
+              id, status, created_at, player_notes, payment_method, payment_status, is_checked_in,
+              booking_no, line_nickname, display_name, payment_deadline, payment_report_time, 
+              payment_account_last5, admin_confirm_time, admin_confirmer, 
+              refund_status, refund_amount, refund_method, refund_time, refund_note, 
+              users (name, phone)
+            )
+          `)
           .gte("session_date", historyStartDate)
           .lte("session_date", historyEndDate);
         if (data) {
@@ -373,19 +391,95 @@ export default function AdminPage() {
       }
 
       const combined = [...fetchedCourts, ...fetchedClasses, ...fetchedOpenPlays];
-
       combined.sort((a, b) => {
         const dateA = a.sortDate + ' ' + (a.sortTime || '00:00');
         const dateB = b.sortDate + ' ' + (b.sortTime || '00:00');
         return dateA > dateB ? -1 : 1;
       });
-
       setHistoryResults(combined);
-
     } catch (err) {
       console.error(err);
     } finally {
       setIsFetchingHistory(false);
+    }
+  };
+
+  // 🌟 臨打：館主確認收款
+  const handleAdminConfirmPayment = async (playerId: number) => {
+    setIsSubmitting(true);
+    try {
+      const admin = await getAdminIdentity();
+      const { data, error } = await supabase.rpc("admin_confirm_payment", {
+        p_player_id: playerId,
+        p_admin_id: admin.id,
+        p_admin_name: admin.name
+      });
+      if (error) throw error;
+      if (!data.success) throw new Error(data.message);
+
+      alert("✅ 收款已確認！");
+      fetchAllData();
+    } catch (err: any) {
+      alert("確認失敗：" + (err.message || "系統錯誤"));
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // 🌟 臨打：撤銷收款確認
+  const handleAdminRevokePayment = async (playerId: number) => {
+    if (!confirm("確定要取消這筆收款確認，退回「待核帳」狀態嗎？")) return;
+    setIsSubmitting(true);
+    try {
+      const admin = await getAdminIdentity();
+      const { data, error } = await supabase.rpc("admin_revoke_payment", {
+        p_player_id: playerId,
+        p_admin_id: admin.id,
+        p_admin_name: admin.name
+      });
+      if (error) throw error;
+      if (!data.success) throw new Error(data.message);
+
+      alert("✅ 已撤銷收款確認！");
+      fetchAllData();
+    } catch (err: any) {
+      alert("撤銷失敗：" + (err.message || "系統錯誤"));
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // 🌟 臨打：執行退款登錄
+  const handleProcessRefund = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!refundConfirmCheck) return alert("請勾選「我已核對原款項入帳，並實際完成上述退款」！");
+    if (refundAmount === "" || Number(refundAmount) < 0) return alert("請輸入實際退款金額！");
+    if (!refundMethod.trim()) return alert("請選擇退款方式！");
+    if (!refundTime) return alert("請輸入實際退款時間！");
+
+    setIsSubmitting(true);
+    try {
+      const admin = await getAdminIdentity();
+      const { data, error } = await supabase.rpc("admin_process_refund", {
+        p_player_id: activeRefundPlayer.id,
+        p_amount: Number(refundAmount),
+        p_method: refundMethod,
+        p_time: new Date(refundTime).toISOString(),
+        p_note: refundNote.trim() || null,
+        p_admin_id: admin.id,
+        p_admin_name: admin.name
+      });
+
+      if (error) throw error;
+      if (!data.success) throw new Error(data.message);
+
+      alert("✅ 退款紀錄已登錄完成！");
+      setActiveRefundPlayer(null);
+      fetchAllData();
+    } catch (err: any) {
+      alert("退款登錄失敗：" + (err.message || "系統錯誤"));
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -527,7 +621,6 @@ export default function AdminPage() {
       { key: "announcement_text", value: tempAnnouncementText.trim(), updated_at: new Date().toISOString() },
       { key: "cancel_limit_hours", value: tempCancelLimitHours.trim(), updated_at: new Date().toISOString() },
 
-      // 🌟 儲存新增的收款連結與帳戶
       { key: "payment_line", value: tempPaymentLine.trim(), updated_at: new Date().toISOString() },
       { key: "payment_jko", value: tempPaymentJko.trim(), updated_at: new Date().toISOString() },
       { key: "payment_twqr", value: tempPaymentTwqr.trim(), updated_at: new Date().toISOString() },
@@ -651,7 +744,8 @@ export default function AdminPage() {
         session.open_play_players?.forEach((p: any) => {
           if (p.status === 'registered') {
             totalEstimated += price; openPlayRev += price;
-            if (p.payment_status === 'paid') totalCollected += price;
+            // 🌟 營收計算調整：將 confirmed 視同 paid，其餘視同未付款
+            if (p.payment_status === 'paid' || p.payment_status === 'confirmed') totalCollected += price;
             else { totalPending += price; openPlayPendingCount += 1; }
           }
         });
@@ -690,6 +784,7 @@ export default function AdminPage() {
     if (activeTab === 'history') fetchHistoryData();
   };
 
+  // 保留供手動登記者直接切換狀態用 (僅限 unpaid/paid 之間)
   const handleToggleOpenPlayPayment = async (playerId: string, currentStatus: string) => {
     const nextStatus = currentStatus === 'paid' ? 'unpaid' : 'paid';
     await supabase.from("open_play_players").update({ payment_status: nextStatus }).eq("id", playerId);
@@ -710,7 +805,8 @@ export default function AdminPage() {
       if (isInDateRange(session.session_date)) {
         session.open_play_players?.forEach((p: any) => {
           if (p.status === 'registered') {
-            csvRows.push([session.session_date, "臨打活動", session.title, p.users?.name || '', p.users?.phone || '', p.payment_method === 'online' ? '線上付款' : '現場付款', session.price || 0, p.payment_status === 'paid' ? '已收款' : '待收款']);
+            const isConfirmed = p.payment_status === 'paid' || p.payment_status === 'confirmed';
+            csvRows.push([session.session_date, "臨打活動", session.title, p.users?.name || '', p.users?.phone || '', p.payment_method === 'online' ? '線上付款' : '現場付款', session.price || 0, isConfirmed ? '已收款' : '待收款']);
           }
         });
       }
@@ -769,6 +865,7 @@ export default function AdminPage() {
       } else if (item._itemType === 'open_plays') {
         item.open_play_players?.forEach((p: any) => {
           if (p.status === 'registered') {
+            const isConfirmed = p.payment_status === 'paid' || p.payment_status === 'confirmed';
             csvRows.push([
               item.sortDate,
               "臨打活動",
@@ -777,7 +874,7 @@ export default function AdminPage() {
               p.users?.phone || '',
               p.payment_method === 'online' ? '線上付款' : '現場付款',
               item.price || 0,
-              p.payment_status === 'paid' ? '已收款' : '待收款'
+              isConfirmed ? '已收款' : '待收款'
             ]);
           }
         });
@@ -915,15 +1012,23 @@ export default function AdminPage() {
     if (!session) return;
     const regCount = session.open_play_players?.filter((p: any) => p.status === 'registered').length || 0;
     if (regCount >= session.max_players) return alert("⚠️ 正取名額已滿！\n請先將某位正取球友「取消」，才能手動將候補轉為正取。");
-    if (!confirm("確定要將這位候補玩家轉為「正取」嗎？")) return;
+    if (!confirm("確定要將這位候補玩家轉為「正取」嗎？\n轉為正取後系統將開始計算 10 分鐘付款倒數！")) return;
 
-    const { error } = await supabase.from("open_play_players").update({ status: "registered", created_at: new Date().toISOString() }).eq("id", playerId);
+    // 將狀態改為正取，並賦予新的 payment_deadline
+    const { error } = await supabase.from("open_play_players").update({
+      status: "registered",
+      payment_status: "pending",
+      payment_method: "online",
+      payment_deadline: new Date(Date.now() + 10 * 60000).toISOString(),
+      created_at: new Date().toISOString()
+    }).eq("id", playerId);
+
     if (error) alert("轉正失敗：" + error.message);
-    else { alert("✅ 已成功轉為正取！"); fetchAllData(); }
+    else { alert("✅ 已成功轉為正取，系統開始倒數！"); fetchAllData(); }
   };
 
   const handleCancelOpenPlayPlayer = async (playerId: string) => {
-    if (!confirm("確定要取消這位玩家嗎？\n(若取消正取，系統將自動遞補第一順位候補)")) return;
+    if (!confirm("確定要取消這位玩家嗎？\n(若取消正取，系統將釋出名額並遞補第一順位候補)")) return;
     const { data: targetPlayer } = await supabase.from("open_play_players").select("session_id, status").eq("id", playerId).single();
     const { error } = await supabase.from("open_play_players").update({ status: "cancelled" }).eq("id", playerId);
     if (error) { alert("取消失敗：" + error.message); return; }
@@ -931,10 +1036,18 @@ export default function AdminPage() {
     if (targetPlayer && targetPlayer.status === 'registered') {
       const { data: nextWaitlisted } = await supabase.from("open_play_players").select("id").eq("session_id", targetPlayer.session_id).eq("status", "waitlisted").order("created_at", { ascending: true }).limit(1).maybeSingle();
       if (nextWaitlisted) {
-        await supabase.from("open_play_players").update({ status: "registered", created_at: new Date().toISOString() }).eq("id", nextWaitlisted.id);
-        alert("✅ 玩家已取消！系統已自動將第一順位候補球友遞補為正取。");
-      } else alert("✅ 玩家已取消！目前無人候補。");
+        // 遞補者轉正，並賦予期限
+        await supabase.from("open_play_players").update({
+          status: "registered",
+          payment_status: "pending",
+          payment_method: "online",
+          payment_deadline: new Date(Date.now() + 10 * 60000).toISOString(),
+          created_at: new Date().toISOString()
+        }).eq("id", nextWaitlisted.id);
+        alert("✅ 玩家已取消！系統已自動將第一順位候補球友遞補為正取，並開始倒數。");
+      } else alert("✅ 玩家已取消！目前無人候補，名額已釋出至前台。");
     } else alert("✅ 候補玩家已成功取消。");
+
     fetchAllData();
   };
 
@@ -950,6 +1063,18 @@ export default function AdminPage() {
       return session.court_ids.map((id: string) => courtsList.find((c) => c.id === id)?.name).filter(Boolean).join('、');
     }
     return session.courts?.name || '未定';
+  };
+
+  const getAdminTimeLeftStr = (deadlineStr: string) => {
+    if (!deadlineStr) return null;
+    const deadline = new Date(deadlineStr).getTime();
+    const now = new Date().getTime();
+    const diffSeconds = Math.floor((deadline - now) / 1000);
+    if (diffSeconds <= 0) return "已逾時";
+
+    const m = Math.floor(diffSeconds / 60);
+    const s = diffSeconds % 60;
+    return `剩餘 ${m}分${s}秒`;
   };
 
   if (!isAuthenticated) {
@@ -1027,7 +1152,7 @@ export default function AdminPage() {
         ) : (
           <>
             {/* ========================================================================= */}
-            {/* 📜 歷史紀錄調閱分頁 (對帳神器版) */}
+            {/* 📜 歷史紀錄調閱分頁 */}
             {/* ========================================================================= */}
             {activeTab === 'history' && (
               <div className="space-y-4 animate-in fade-in pb-10">
@@ -1084,7 +1209,8 @@ export default function AdminPage() {
                       if (!historyShowUnpaidOnly) return true;
                       if (item._itemType === 'courts') return item.payment_status === 'unpaid';
                       const bookings = item._itemType === 'classes' ? item.class_bookings : item.open_play_players;
-                      return bookings?.some((b: any) => b.status !== 'cancelled' && b.payment_status === 'unpaid');
+                      // 🌟 修正歷史查詢條件：只要是 reported 或 pending (含待收款意義)，都視為 unpaid 展示
+                      return bookings?.some((b: any) => b.status !== 'cancelled' && (b.payment_status === 'unpaid' || b.payment_status === 'reported' || b.payment_status === 'pending'));
                     }).map((item) => {
 
                       if (item._itemType === 'open_plays' || item._itemType === 'classes') {
@@ -1104,7 +1230,8 @@ export default function AdminPage() {
                         let unpaidAmount = 0;
 
                         activeBookings.forEach((b: any) => {
-                          if (b.payment_status === 'paid') {
+                          const isConfirmed = b.payment_status === 'paid' || b.payment_status === 'confirmed';
+                          if (isConfirmed) {
                             if (b.payment_method === 'online') collectedOnline += price;
                             else collectedCash += price;
                           } else {
@@ -1147,6 +1274,7 @@ export default function AdminPage() {
                             <div className="mt-3 space-y-1.5 max-h-48 overflow-y-auto pr-1">
                               {activeBookings.map((b: any) => {
                                 const bNotes = isClass ? b.notes : b.player_notes;
+                                const isConfirmed = b.payment_status === 'paid' || b.payment_status === 'confirmed';
                                 return (
                                   <div key={b.id} className="flex justify-between items-center text-xs bg-gray-50 p-2 rounded-lg border border-gray-100">
                                     <div className="flex-1 min-w-0 pr-2">
@@ -1166,13 +1294,13 @@ export default function AdminPage() {
                                         if (isClass) handleToggleClassPayment(b.id, b.payment_status);
                                         else handleToggleOpenPlayPayment(b.id, b.payment_status);
                                       }}
-                                      className={`text-[11px] font-bold px-3 py-1.5 rounded-lg border transition flex shrink-0 items-center justify-center gap-1 ${b.payment_status === "paid"
-                                          ? "bg-emerald-50 text-emerald-700 border-emerald-300"
-                                          : "bg-amber-50 text-amber-800 border-amber-300 shadow-sm"
+                                      className={`text-[11px] font-bold px-3 py-1.5 rounded-lg border transition flex shrink-0 items-center justify-center gap-1 ${isConfirmed
+                                        ? "bg-emerald-50 text-emerald-700 border-emerald-300"
+                                        : "bg-amber-50 text-amber-800 border-amber-300 shadow-sm"
                                         }`}
                                     >
                                       <DollarSign size={12} />
-                                      {b.payment_status === "paid" ? "已收" : "待收"}
+                                      {isConfirmed ? "已收" : "待收"}
                                     </button>
                                   </div>
                                 );
@@ -1211,8 +1339,8 @@ export default function AdminPage() {
                                 <button
                                   onClick={() => handleToggleCourtPayment(item.ids, item.payment_status)}
                                   className={`text-[11px] font-bold px-4 py-1.5 rounded-lg border transition flex items-center justify-center gap-1 ${isPaid
-                                      ? "bg-emerald-50 text-emerald-700 border-emerald-300"
-                                      : "bg-amber-50 text-amber-800 border-amber-300 shadow-sm"
+                                    ? "bg-emerald-50 text-emerald-700 border-emerald-300"
+                                    : "bg-amber-50 text-amber-800 border-amber-300 shadow-sm"
                                     }`}
                                 >
                                   <DollarSign size={12} />
@@ -1267,10 +1395,10 @@ export default function AdminPage() {
                             <div className="flex items-center gap-1.5">
                               <span
                                 className={`text-[10px] px-1.5 py-0.2 rounded font-bold ${item.type === "臨打"
-                                    ? "bg-blue-100 text-blue-700"
-                                    : item.type === "課程"
-                                      ? "bg-orange-100 text-orange-700"
-                                      : "bg-emerald-100 text-emerald-700"
+                                  ? "bg-blue-100 text-blue-700"
+                                  : item.type === "課程"
+                                    ? "bg-orange-100 text-orange-700"
+                                    : "bg-emerald-100 text-emerald-700"
                                   }`}
                               >
                                 {item.type}
@@ -1287,8 +1415,8 @@ export default function AdminPage() {
                             <button
                               onClick={() => handleToggleCheckIn(item.tableName, item.id)}
                               className={`text-[11px] font-bold w-14 py-1.5 rounded-lg border transition flex items-center justify-center ${item.isCheckedIn
-                                  ? "bg-gray-800 text-white border-gray-900 shadow-sm"
-                                  : "bg-gray-100 text-gray-600 border-gray-300 hover:bg-gray-200"
+                                ? "bg-gray-800 text-white border-gray-900 shadow-sm"
+                                : "bg-gray-100 text-gray-600 border-gray-300 hover:bg-gray-200"
                                 }`}
                             >
                               {item.isCheckedIn ? "已簽到" : "簽到"}
@@ -1300,12 +1428,12 @@ export default function AdminPage() {
                                 else if (item.tableName === "class_bookings") handleToggleClassPayment(item.id, item.paymentStatus);
                                 else handleToggleOpenPlayPayment(item.id, item.paymentStatus);
                               }}
-                              className={`text-[11px] font-bold w-14 py-1.5 rounded-lg border transition flex items-center justify-center ${item.paymentStatus === "paid"
-                                  ? "bg-emerald-50 text-emerald-700 border-emerald-300 shadow-sm"
-                                  : "bg-amber-50 text-amber-800 border-amber-300 shadow-sm"
+                              className={`text-[11px] font-bold w-14 py-1.5 rounded-lg border transition flex items-center justify-center ${item.paymentStatus === "paid" || item.paymentStatus === "confirmed"
+                                ? "bg-emerald-50 text-emerald-700 border-emerald-300 shadow-sm"
+                                : "bg-amber-50 text-amber-800 border-amber-300 shadow-sm"
                                 }`}
                             >
-                              {item.paymentStatus === "paid" ? "已收" : "未收"}
+                              {item.paymentStatus === "paid" || item.paymentStatus === "confirmed" ? "已收" : "未收"}
                             </button>
                           </div>
                         </div>
@@ -1315,34 +1443,10 @@ export default function AdminPage() {
                 </div>
 
                 <div className="flex bg-white p-1 rounded-xl border border-gray-200 shadow-sm">
-                  <button
-                    onClick={() => setDateFilter('today')}
-                    className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition ${dateFilter === 'today' ? 'bg-gray-900 text-white' : 'text-gray-600'
-                      }`}
-                  >
-                    今日
-                  </button>
-                  <button
-                    onClick={() => setDateFilter('week')}
-                    className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition ${dateFilter === 'week' ? 'bg-gray-900 text-white' : 'text-gray-600'
-                      }`}
-                  >
-                    本週
-                  </button>
-                  <button
-                    onClick={() => setDateFilter('month')}
-                    className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition ${dateFilter === 'month' ? 'bg-gray-900 text-white' : 'text-gray-600'
-                      }`}
-                  >
-                    本月
-                  </button>
-                  <button
-                    onClick={() => setDateFilter('custom')}
-                    className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition ${dateFilter === 'custom' ? 'bg-gray-900 text-white' : 'text-gray-600'
-                      }`}
-                  >
-                    自訂
-                  </button>
+                  <button onClick={() => setDateFilter('today')} className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition ${dateFilter === 'today' ? 'bg-gray-900 text-white' : 'text-gray-600'}`}>今日</button>
+                  <button onClick={() => setDateFilter('week')} className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition ${dateFilter === 'week' ? 'bg-gray-900 text-white' : 'text-gray-600'}`}>本週</button>
+                  <button onClick={() => setDateFilter('month')} className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition ${dateFilter === 'month' ? 'bg-gray-900 text-white' : 'text-gray-600'}`}>本月</button>
+                  <button onClick={() => setDateFilter('custom')} className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition ${dateFilter === 'custom' ? 'bg-gray-900 text-white' : 'text-gray-600'}`}>自訂</button>
                 </div>
 
                 {dateFilter === 'custom' && (
@@ -1389,9 +1493,8 @@ export default function AdminPage() {
                         {metrics.courtPendingCount} <span className="text-xs font-normal">筆</span>
                       </p>
                     </div>
-
                     <div
-                      onClick={() => setActiveTab('open_plays')}
+                      onClick={() => { setActiveTab('open_plays'); setOpenPlayShowReportedOnly(true); }}
                       className="bg-white p-2.5 rounded-xl border border-amber-200 text-center cursor-pointer hover:bg-amber-100/50 transition"
                     >
                       <p className="text-[11px] text-gray-500 font-bold">臨打活動</p>
@@ -1399,7 +1502,6 @@ export default function AdminPage() {
                         {metrics.openPlayPendingCount} <span className="text-xs font-normal">筆</span>
                       </p>
                     </div>
-
                     <div
                       onClick={() => setActiveTab('classes')}
                       className="bg-white p-2.5 rounded-xl border border-amber-200 text-center cursor-pointer hover:bg-amber-100/50 transition"
@@ -1431,23 +1533,15 @@ export default function AdminPage() {
                 <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200 space-y-3">
                   <div className="space-y-3 text-sm">
                     <div className="flex justify-between items-center bg-emerald-50 p-3 rounded-xl border border-emerald-100">
-                      <span className="font-bold text-emerald-900 flex items-center gap-1.5">
-                        <Calendar size={16} /> 場地租借
-                      </span>
+                      <span className="font-bold text-emerald-900 flex items-center gap-1.5"><Calendar size={16} /> 場地租借</span>
                       <span className="font-extrabold text-emerald-700">${metrics.courtRev}</span>
                     </div>
-
                     <div className="flex justify-between items-center bg-blue-50 p-3 rounded-xl border border-blue-100">
-                      <span className="font-bold text-blue-900 flex items-center gap-1.5">
-                        <Users size={16} /> 臨打活動
-                      </span>
+                      <span className="font-bold text-blue-900 flex items-center gap-1.5"><Users size={16} /> 臨打活動</span>
                       <span className="font-extrabold text-blue-700">${metrics.openPlayRev}</span>
                     </div>
-
                     <div className="flex justify-between items-center bg-orange-50 p-3 rounded-xl border border-orange-100">
-                      <span className="font-bold text-orange-900 flex items-center gap-1.5">
-                        <CreditCard size={16} /> 體驗課程
-                      </span>
+                      <span className="font-bold text-orange-900 flex items-center gap-1.5"><CreditCard size={16} /> 體驗課程</span>
                       <span className="font-extrabold text-orange-700">${metrics.classRev}</span>
                     </div>
                   </div>
@@ -1456,7 +1550,7 @@ export default function AdminPage() {
             )}
 
             {/* ========================================================================= */}
-            {/* 🎾 場地租借分頁 */}
+            {/* 🎾 場地租借分頁 (維持原樣) */}
             {/* ========================================================================= */}
             {activeTab === 'courts' && (
               <div className="space-y-4">
@@ -1466,23 +1560,14 @@ export default function AdminPage() {
                   </h3>
                   <div className="grid grid-cols-2 gap-2 pt-1">
                     {courtsList.map((c) => (
-                      <div
-                        key={c.id}
-                        className="p-2.5 rounded-lg border flex justify-between items-center bg-gray-50"
-                      >
+                      <div key={c.id} className="p-2.5 rounded-lg border flex justify-between items-center bg-gray-50">
                         <div>
                           <p className="text-xs font-bold text-gray-800">{c.name}</p>
-                          <span
-                            className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${c.status === 'active' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'
-                              }`}
-                          >
+                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${c.status === 'active' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
                             {c.status === 'active' ? '使用中' : '維修中'}
                           </span>
                         </div>
-                        <button
-                          onClick={() => handleToggleCourtStatus(c.id, c.status)}
-                          className="text-xs font-bold px-2 py-1 rounded bg-white border border-gray-300 text-gray-700 hover:bg-gray-100"
-                        >
+                        <button onClick={() => handleToggleCourtStatus(c.id, c.status)} className="text-xs font-bold px-2 py-1 rounded bg-white border border-gray-300 text-gray-700 hover:bg-gray-100">
                           切換
                         </button>
                       </div>
@@ -1495,68 +1580,32 @@ export default function AdminPage() {
                     <p className="text-center text-gray-500 mt-5 text-sm">無近期預約紀錄 (超過7天請至歷史查詢)</p>
                   ) : (
                     courtBookings.map((b, index) => (
-                      <div
-                        key={b.ids[0] + index}
-                        className={`bg-white p-4 rounded-xl shadow-sm border border-gray-200 ${b.status === 'cancelled' ? 'opacity-60 bg-gray-50' : ''
-                          }`}
-                      >
+                      <div key={b.ids[0] + index} className={`bg-white p-4 rounded-xl shadow-sm border border-gray-200 ${b.status === 'cancelled' ? 'opacity-60 bg-gray-50' : ''}`}>
                         <div className="flex justify-between items-center border-b pb-2 mb-2">
                           <span className="font-bold text-gray-800 text-lg">{b.courts?.name}</span>
                           <div className="flex items-center gap-2">
-                            <span
-                              className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${b.payment_method === 'online'
-                                  ? 'bg-green-100 text-green-700'
-                                  : 'bg-gray-200 text-gray-700'
-                                }`}
-                            >
+                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${b.payment_method === 'online' ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-700'}`}>
                               {b.payment_method === 'online' ? '📱 線上付款' : '💵 現場付款'}
                             </span>
-                            <span
-                              className={`font-bold text-lg ${b.status === 'cancelled' ? 'text-gray-400 line-through' : 'text-emerald-600'
-                                }`}
-                            >
+                            <span className={`font-bold text-lg ${b.status === 'cancelled' ? 'text-gray-400 line-through' : 'text-emerald-600'}`}>
                               ${b.totalPrice}
                             </span>
                           </div>
                         </div>
-
                         <div className="text-sm text-gray-600 space-y-1">
-                          <p className="flex items-center">
-                            📅 {b.booking_date} | {b.start_time?.slice(0, 5)}-{b.end_time?.slice(0, 5)}
-                            <span className="ml-2 text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded font-bold">
-                              {b.ids.length * 0.5}h
-                            </span>
-                          </p>
-                          <p>
-                            👤 {b.users?.name} ({b.users?.phone})
-                          </p>
+                          <p className="flex items-center">📅 {b.booking_date} | {b.start_time?.slice(0, 5)}-{b.end_time?.slice(0, 5)}<span className="ml-2 text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded font-bold">{b.ids.length * 0.5}h</span></p>
+                          <p>👤 {b.users?.name} ({b.users?.phone})</p>
                         </div>
-
                         <div className="flex gap-2 mt-3 pt-2 border-t border-gray-100">
                           {b.status === 'booked' && (
-                            <button
-                              onClick={() => handleToggleCourtPayment(b.ids, b.payment_status)}
-                              className={`flex-1 text-xs font-bold py-2 rounded-lg border transition flex items-center justify-center gap-1 ${b.payment_status === 'paid'
-                                  ? 'bg-emerald-500 text-white border-emerald-600'
-                                  : 'bg-amber-100 text-amber-800 border-amber-300'
-                                }`}
-                            >
-                              <DollarSign size={14} />
-                              {b.payment_status === 'paid' ? '已收款' : '待收款'}
+                            <button onClick={() => handleToggleCourtPayment(b.ids, b.payment_status)} className={`flex-1 text-xs font-bold py-2 rounded-lg border transition flex items-center justify-center gap-1 ${b.payment_status === 'paid' ? 'bg-emerald-500 text-white border-emerald-600' : 'bg-amber-100 text-amber-800 border-amber-300'}`}>
+                              <DollarSign size={14} /> {b.payment_status === 'paid' ? '已收款' : '待收款'}
                             </button>
                           )}
-
                           {b.status === 'booked' ? (
-                            <button
-                              onClick={() => handleCancelCourt(b.ids)}
-                              className="flex-1 text-red-600 bg-red-50 hover:bg-red-100 py-2 rounded-lg text-sm font-bold border border-red-200 transition"
-                            >
-                              取消預約
-                            </button>
+                            <button onClick={() => handleCancelCourt(b.ids)} className="flex-1 text-red-600 bg-red-50 hover:bg-red-100 py-2 rounded-lg text-sm font-bold border border-red-200 transition">取消預約</button>
                           ) : (
-                            <div className="w-full text-center text-gray-400 bg-gray-100 py-2 rounded-lg text-sm font-bold">
-                              已取消
-                            </div>
+                            <div className="w-full text-center text-gray-400 bg-gray-100 py-2 rounded-lg text-sm font-bold">已取消</div>
                           )}
                         </div>
                       </div>
@@ -1567,45 +1616,26 @@ export default function AdminPage() {
             )}
 
             {/* ========================================================================= */}
-            {/* 🎓 體驗課程分頁 */}
+            {/* 🎓 體驗課程分頁 (維持原樣) */}
             {/* ========================================================================= */}
             {activeTab === 'classes' && (
               <div className="space-y-4">
                 {showClassVisualSchedule ? (
                   <div className="bg-white p-4 rounded-xl border border-orange-300 shadow-lg animate-in fade-in zoom-in-95">
                     <div className="flex justify-between items-center mb-3 border-b pb-2">
-                      <h4 className="font-bold text-orange-800 flex items-center gap-1.5">
-                        <Eye size={18} /> 課程視覺化空檔快選
-                      </h4>
-                      <button onClick={() => { setShowClassVisualSchedule(false); setClassSelectedGrid([]); }} className="text-gray-400 hover:text-gray-600">
-                        <X size={20} />
-                      </button>
+                      <h4 className="font-bold text-orange-800 flex items-center gap-1.5"><Eye size={18} /> 課程視覺化空檔快選</h4>
+                      <button onClick={() => { setShowClassVisualSchedule(false); setClassSelectedGrid([]); }} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
                     </div>
-
                     <div className="mb-4">
                       <label className="text-xs text-gray-500 font-bold block mb-1">目標日期</label>
-                      <input
-                        type="date"
-                        value={classVisualDate}
-                        onChange={(e) => { setClassVisualDate(e.target.value); setClassSelectedGrid([]); }}
-                        className="w-full bg-gray-50 text-gray-900 border border-gray-300 p-2 rounded-lg text-sm focus:outline-none"
-                      />
+                      <input type="date" value={classVisualDate} onChange={(e) => { setClassVisualDate(e.target.value); setClassSelectedGrid([]); }} className="w-full bg-gray-50 text-gray-900 border border-gray-300 p-2 rounded-lg text-sm focus:outline-none" />
                     </div>
-
-                    <p className="text-[11px] text-gray-500 mb-2 font-bold flex items-center gap-1">
-                      <MousePointerClick size={12} /> 點擊綠色格子選擇開課空檔 (可跨時間與場地)
-                    </p>
-
                     <div className="overflow-x-auto max-h-[400px] border border-gray-200 rounded-lg">
                       <table className="w-full text-xs text-center border-collapse">
                         <thead className="sticky top-0 z-20 shadow-sm">
                           <tr>
                             <th className="border-b p-2 bg-gray-100 text-gray-600 font-bold sticky left-0 z-30 w-16">時間</th>
-                            {courtsList.map(c => (
-                              <th key={c.id} className="border-b border-l p-2 bg-gray-100 text-gray-700 font-bold min-w-[80px]">
-                                {c.name}
-                              </th>
-                            ))}
+                            {courtsList.map(c => (<th key={c.id} className="border-b border-l p-2 bg-gray-100 text-gray-700 font-bold min-w-[80px]">{c.name}</th>))}
                           </tr>
                         </thead>
                         <tbody>
@@ -1616,172 +1646,58 @@ export default function AdminPage() {
                                 const status = checkIsOccupied(c.id, time, classVisualDate);
                                 const cellKey = `${c.id}_${time}`;
                                 const isSelected = classSelectedGrid.includes(cellKey);
-
-                                if (status.occupied) {
-                                  return (
-                                    <td key={c.id} className="border-b border-l p-1 bg-gray-200">
-                                      <span className="text-[10px] text-gray-500 font-bold block">{status.label}</span>
-                                    </td>
-                                  );
-                                }
-                                return (
-                                  <td
-                                    key={c.id}
-                                    onClick={() => toggleClassCellSelection(cellKey)}
-                                    className={`border-b border-l p-1 cursor-pointer transition select-none ${isSelected
-                                        ? 'bg-orange-500 text-white font-bold'
-                                        : 'bg-green-50 text-green-700 hover:bg-green-200 font-medium'
-                                      }`}
-                                  >
-                                    {isSelected ? '已選' : '空檔'}
-                                  </td>
-                                );
+                                if (status.occupied) return (<td key={c.id} className="border-b border-l p-1 bg-gray-200"><span className="text-[10px] text-gray-500 font-bold block">{status.label}</span></td>);
+                                return (<td key={c.id} onClick={() => toggleClassCellSelection(cellKey)} className={`border-b border-l p-1 cursor-pointer transition select-none ${isSelected ? 'bg-orange-500 text-white font-bold' : 'bg-green-50 text-green-700 hover:bg-green-200 font-medium'}`}>{isSelected ? '已選' : '空檔'}</td>);
                               })}
                             </tr>
                           ))}
                         </tbody>
                       </table>
                     </div>
-
-                    <button
-                      onClick={handleQuickConvertClass}
-                      className="w-full mt-4 bg-orange-600 hover:bg-orange-700 text-white font-bold py-3 rounded-xl shadow-md transition"
-                    >
+                    <button onClick={handleQuickConvertClass} className="w-full mt-4 bg-orange-600 hover:bg-orange-700 text-white font-bold py-3 rounded-xl shadow-md transition">
                       將選取的 {classSelectedGrid.length} 個時段轉為課程
                     </button>
                   </div>
                 ) : (
                   <div className="flex gap-2">
-                    <button
-                      onClick={() => setIsAddingClass(!isAddingClass)}
-                      className="flex-1 py-3 bg-orange-100 text-orange-700 font-bold rounded-xl flex justify-center items-center gap-2 border border-orange-200 transition hover:bg-orange-200"
-                    >
+                    <button onClick={() => setIsAddingClass(!isAddingClass)} className="flex-1 py-3 bg-orange-100 text-orange-700 font-bold rounded-xl flex justify-center items-center gap-2 border border-orange-200 transition hover:bg-orange-200">
                       {isAddingClass ? <><X size={18} /> 取消新增</> : <><Plus size={18} /> 一般新增課程</>}
                     </button>
-
-                    <button
-                      onClick={() => { setShowClassVisualSchedule(true); setIsAddingClass(false); }}
-                      className="flex-1 py-3 bg-amber-100 text-amber-800 font-bold rounded-xl flex justify-center items-center gap-2 border border-amber-200 transition hover:bg-amber-200"
-                    >
+                    <button onClick={() => { setShowClassVisualSchedule(true); setIsAddingClass(false); }} className="flex-1 py-3 bg-amber-100 text-amber-800 font-bold rounded-xl flex justify-center items-center gap-2 border border-amber-200 transition hover:bg-amber-200">
                       <Eye size={18} /> 空檔視覺化快選
                     </button>
                   </div>
                 )}
 
                 {isAddingClass && (
-                  <form
-                    onSubmit={submitNewClass}
-                    className="bg-white p-4 rounded-xl border-2 border-orange-400 space-y-3 shadow-md animate-in fade-in"
-                  >
+                  <form onSubmit={submitNewClass} className="bg-white p-4 rounded-xl border-2 border-orange-400 space-y-3 shadow-md animate-in fade-in">
                     <div className="flex justify-between items-center border-b pb-2">
                       <h4 className="font-bold text-orange-800 text-sm">新增課程場次</h4>
-                      <button
-                        type="button"
-                        onClick={() => setIsAddingClass(false)}
-                        className="text-gray-400 hover:text-gray-600"
-                      >
-                        <X size={18} />
-                      </button>
+                      <button type="button" onClick={() => setIsAddingClass(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
                     </div>
-
-                    <input
-                      type="text"
-                      placeholder="課程名稱"
-                      required
-                      className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
-                      style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                      value={newClass.title}
-                      onChange={(e) => setNewClass({ ...newClass, title: e.target.value })}
-                    />
-
-                    <select
-                      className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
-                      style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                      value={newClass.court_id}
-                      onChange={(e) => setNewClass({ ...newClass, court_id: e.target.value })}
-                    >
+                    <input type="text" placeholder="課程名稱" required className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm" style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }} value={newClass.title} onChange={(e) => setNewClass({ ...newClass, title: e.target.value })} />
+                    <select className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm" style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }} value={newClass.court_id} onChange={(e) => setNewClass({ ...newClass, court_id: e.target.value })}>
                       <option value="">選擇場地 (保留未定)</option>
-                      {courtsList.map((court) => (
-                        <option key={court.id} value={court.id}>
-                          {court.name}
-                        </option>
-                      ))}
+                      {courtsList.map((court) => (<option key={court.id} value={court.id}>{court.name}</option>))}
                     </select>
-
-                    <input
-                      type="text"
-                      placeholder="教練名稱"
-                      required
-                      className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
-                      style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                      value={newClass.coach}
-                      onChange={(e) => setNewClass({ ...newClass, coach: e.target.value })}
-                    />
-                    <input
-                      type="date"
-                      required
-                      className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
-                      style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                      value={newClass.class_date}
-                      onChange={(e) => setNewClass({ ...newClass, class_date: e.target.value })}
-                    />
-
+                    <input type="text" placeholder="教練名稱" required className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm" style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }} value={newClass.coach} onChange={(e) => setNewClass({ ...newClass, coach: e.target.value })} />
+                    <input type="date" required className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm" style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }} value={newClass.class_date} onChange={(e) => setNewClass({ ...newClass, class_date: e.target.value })} />
                     <div className="flex gap-2">
-                      <input
-                        type="time"
-                        required
-                        className="flex-1 bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
-                        style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                        value={newClass.start_time}
-                        onChange={(e) => setNewClass({ ...newClass, start_time: e.target.value })}
-                      />
-                      <input
-                        type="time"
-                        required
-                        className="flex-1 bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
-                        style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                        value={newClass.end_time}
-                        onChange={(e) => setNewClass({ ...newClass, end_time: e.target.value })}
-                      />
+                      <input type="time" required className="flex-1 bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm" style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }} value={newClass.start_time} onChange={(e) => setNewClass({ ...newClass, start_time: e.target.value })} />
+                      <input type="time" required className="flex-1 bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm" style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }} value={newClass.end_time} onChange={(e) => setNewClass({ ...newClass, end_time: e.target.value })} />
                     </div>
-
                     <div className="grid grid-cols-2 gap-2">
                       <div>
                         <label className="text-xs text-gray-500 mb-1 block">人數上限</label>
-                        <input
-                          type="number"
-                          required
-                          className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
-                          style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                          value={newClass.max_players}
-                          onChange={(e) => setNewClass({ ...newClass, max_players: Number(e.target.value) })}
-                        />
+                        <input type="number" required className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm" style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }} value={newClass.max_players} onChange={(e) => setNewClass({ ...newClass, max_players: Number(e.target.value) })} />
                       </div>
                       <div>
                         <label className="text-xs text-gray-500 mb-1 block">價格 (元)</label>
-                        <input
-                          type="number"
-                          required
-                          className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
-                          style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                          value={newClass.price}
-                          onChange={(e) => setNewClass({ ...newClass, price: Number(e.target.value) })}
-                        />
+                        <input type="number" required className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm" style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }} value={newClass.price} onChange={(e) => setNewClass({ ...newClass, price: Number(e.target.value) })} />
                       </div>
                     </div>
-
-                    <input
-                      type="text"
-                      placeholder="備註 (選填)"
-                      className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
-                      style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                      value={newClass.notes}
-                      onChange={(e) => setNewClass({ ...newClass, notes: e.target.value })}
-                    />
-
-                    <button type="submit" className="w-full bg-orange-600 text-white font-bold py-2 rounded-lg shadow">
-                      確認新增
-                    </button>
+                    <input type="text" placeholder="備註 (選填)" className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm" style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }} value={newClass.notes} onChange={(e) => setNewClass({ ...newClass, notes: e.target.value })} />
+                    <button type="submit" className="w-full bg-orange-600 text-white font-bold py-2 rounded-lg shadow">確認新增</button>
                   </form>
                 )}
 
@@ -1790,125 +1706,29 @@ export default function AdminPage() {
                 ) : (
                   classesList.map((cls) => {
                     const activeBookings = cls.class_bookings?.filter((b: any) => b.status !== 'cancelled') || [];
-
                     if (editingClassId === cls.id) {
                       return (
-                        <form
-                          key={cls.id}
-                          onSubmit={submitEditClass}
-                          className="bg-orange-50 p-4 rounded-xl border-2 border-orange-400 space-y-3 shadow-md animate-in fade-in"
-                        >
+                        <form key={cls.id} onSubmit={submitEditClass} className="bg-orange-50 p-4 rounded-xl border-2 border-orange-400 space-y-3 shadow-md animate-in fade-in">
                           <h4 className="font-bold text-orange-800 border-b border-orange-200 pb-2">✏️ 編輯體驗課程</h4>
-
-                          <input
-                            type="text"
-                            placeholder="課程名稱"
-                            required
-                            className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
-                            style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                            value={editClass.title}
-                            onChange={(e) => setEditClass({ ...editClass, title: e.target.value })}
-                          />
-
-                          <select
-                            className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
-                            style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                            value={editClass.court_id}
-                            onChange={(e) => setEditClass({ ...editClass, court_id: e.target.value })}
-                          >
+                          <input type="text" placeholder="課程名稱" required className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm" style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }} value={editClass.title} onChange={(e) => setEditClass({ ...editClass, title: e.target.value })} />
+                          <select className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm" style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }} value={editClass.court_id} onChange={(e) => setEditClass({ ...editClass, court_id: e.target.value })}>
                             <option value="">選擇場地 (保留未定)</option>
-                            {courtsList.map((court) => (
-                              <option key={court.id} value={court.id}>
-                                {court.name}
-                              </option>
-                            ))}
+                            {courtsList.map((court) => (<option key={court.id} value={court.id}>{court.name}</option>))}
                           </select>
-
-                          <input
-                            type="text"
-                            placeholder="教練名稱"
-                            required
-                            className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
-                            style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                            value={editClass.coach}
-                            onChange={(e) => setEditClass({ ...editClass, coach: e.target.value })}
-                          />
-                          <input
-                            type="date"
-                            required
-                            className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
-                            style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                            value={editClass.class_date}
-                            onChange={(e) => setEditClass({ ...editClass, class_date: e.target.value })}
-                          />
-
+                          <input type="text" placeholder="教練名稱" required className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm" style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }} value={editClass.coach} onChange={(e) => setEditClass({ ...editClass, coach: e.target.value })} />
+                          <input type="date" required className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm" style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }} value={editClass.class_date} onChange={(e) => setEditClass({ ...editClass, class_date: e.target.value })} />
                           <div className="flex gap-2">
-                            <input
-                              type="time"
-                              required
-                              className="flex-1 bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
-                              style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                              value={editClass.start_time}
-                              onChange={(e) => setEditClass({ ...editClass, start_time: e.target.value })}
-                            />
-                            <input
-                              type="time"
-                              required
-                              className="flex-1 bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
-                              style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                              value={editClass.end_time}
-                              onChange={(e) => setEditClass({ ...editClass, end_time: e.target.value })}
-                            />
+                            <input type="time" required className="flex-1 bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm" style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }} value={editClass.start_time} onChange={(e) => setEditClass({ ...editClass, start_time: e.target.value })} />
+                            <input type="time" required className="flex-1 bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm" style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }} value={editClass.end_time} onChange={(e) => setEditClass({ ...editClass, end_time: e.target.value })} />
                           </div>
-
                           <div className="grid grid-cols-2 gap-2">
-                            <div>
-                              <label className="text-xs text-gray-500 mb-1 block">人數上限</label>
-                              <input
-                                type="number"
-                                required
-                                className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
-                                style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                                value={editClass.max_players}
-                                onChange={(e) => setEditClass({ ...editClass, max_players: Number(e.target.value) })}
-                              />
-                            </div>
-                            <div>
-                              <label className="text-xs text-gray-500 mb-1 block">價格 (元)</label>
-                              <input
-                                type="number"
-                                required
-                                className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
-                                style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                                value={editClass.price}
-                                onChange={(e) => setEditClass({ ...editClass, price: Number(e.target.value) })}
-                              />
-                            </div>
+                            <div><label className="text-xs text-gray-500 mb-1 block">人數上限</label><input type="number" required className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm" style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }} value={editClass.max_players} onChange={(e) => setEditClass({ ...editClass, max_players: Number(e.target.value) })} /></div>
+                            <div><label className="text-xs text-gray-500 mb-1 block">價格 (元)</label><input type="number" required className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm" style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }} value={editClass.price} onChange={(e) => setEditClass({ ...editClass, price: Number(e.target.value) })} /></div>
                           </div>
-
-                          <input
-                            type="text"
-                            placeholder="備註 (選填)"
-                            className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
-                            style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                            value={editClass.notes}
-                            onChange={(e) => setEditClass({ ...editClass, notes: e.target.value })}
-                          />
-
+                          <input type="text" placeholder="備註 (選填)" className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm" style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }} value={editClass.notes} onChange={(e) => setEditClass({ ...editClass, notes: e.target.value })} />
                           <div className="flex gap-2 pt-2">
-                            <button
-                              type="button"
-                              onClick={() => setEditingClassId(null)}
-                              className="flex-1 bg-white border border-gray-300 text-gray-600 font-bold py-2 rounded-lg text-sm"
-                            >
-                              取消
-                            </button>
-                            <button
-                              type="submit"
-                              className="flex-1 bg-orange-600 text-white font-bold py-2 rounded-lg text-sm shadow"
-                            >
-                              儲存修改
-                            </button>
+                            <button type="button" onClick={() => setEditingClassId(null)} className="flex-1 bg-white border border-gray-300 text-gray-600 font-bold py-2 rounded-lg text-sm">取消</button>
+                            <button type="submit" className="flex-1 bg-orange-600 text-white font-bold py-2 rounded-lg text-sm shadow">儲存修改</button>
                           </div>
                         </form>
                       );
@@ -1918,43 +1738,18 @@ export default function AdminPage() {
                       <div key={cls.id} className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
                         <div className="bg-orange-50 p-4 border-b border-orange-100 flex justify-between items-start">
                           <div>
-                            <span className="text-xs font-bold text-orange-700 bg-orange-100 px-2 py-0.5 rounded mb-1 inline-block">
-                              教練：{cls.coach}
-                            </span>
+                            <span className="text-xs font-bold text-orange-700 bg-orange-100 px-2 py-0.5 rounded mb-1 inline-block">教練：{cls.coach}</span>
                             <h3 className="font-bold text-gray-800 text-base">{cls.title}</h3>
-                            <p className="text-sm text-gray-600 mt-1">
-                              📅 {cls.class_date} | {cls.start_time?.slice(0, 5)}-{cls.end_time?.slice(0, 5)}
-                            </p>
-                            <p className="text-xs text-orange-600 font-bold mt-1">
-                              💰 ${cls.price} / 人 (上限 {cls.max_players} 人)
-                            </p>
+                            <p className="text-sm text-gray-600 mt-1">📅 {cls.class_date} | {cls.start_time?.slice(0, 5)}-{cls.end_time?.slice(0, 5)}</p>
+                            <p className="text-xs text-orange-600 font-bold mt-1">💰 ${cls.price} / 人 (上限 {cls.max_players} 人)</p>
                             {cls.notes && <p className="text-xs text-gray-500 mt-1">📝 館方備註：{cls.notes}</p>}
                           </div>
-
                           <div className="flex flex-col items-end gap-2 shrink-0">
-                            <span className="text-xs font-bold text-orange-700 bg-orange-200 px-2 py-1 rounded">
-                              {cls.courts?.name || '未定'}
-                            </span>
+                            <span className="text-xs font-bold text-orange-700 bg-orange-200 px-2 py-1 rounded">{cls.courts?.name || '未定'}</span>
                             <div className="flex items-center gap-2 mt-1">
-                              <button
-                                onClick={() => handleDuplicateClass(cls)}
-                                title="複製為新場次"
-                                className="flex items-center gap-0.5 text-xs font-bold text-gray-600 hover:text-gray-900 bg-white border border-gray-300 px-1.5 py-1 rounded"
-                              >
-                                <Copy size={12} /> 複製
-                              </button>
-                              <button
-                                onClick={() => startEditingClass(cls)}
-                                className="flex items-center gap-1 text-xs font-bold text-orange-600 hover:text-orange-800"
-                              >
-                                <Edit size={14} /> 編輯
-                              </button>
-                              <button
-                                onClick={() => handleDeleteClassSession(cls.id)}
-                                className="flex items-center gap-1 text-xs font-bold text-red-500 hover:text-red-700"
-                              >
-                                <Trash2 size={14} /> 刪除
-                              </button>
+                              <button onClick={() => handleDuplicateClass(cls)} title="複製為新場次" className="flex items-center gap-0.5 text-xs font-bold text-gray-600 hover:text-gray-900 bg-white border border-gray-300 px-1.5 py-1 rounded"><Copy size={12} /> 複製</button>
+                              <button onClick={() => startEditingClass(cls)} className="flex items-center gap-1 text-xs font-bold text-orange-600 hover:text-orange-800"><Edit size={14} /> 編輯</button>
+                              <button onClick={() => handleDeleteClassSession(cls.id)} className="flex items-center gap-1 text-xs font-bold text-red-500 hover:text-red-700"><Trash2 size={14} /> 刪除</button>
                             </div>
                           </div>
                         </div>
@@ -1964,55 +1759,24 @@ export default function AdminPage() {
                             <p className="text-sm text-gray-400 text-center">目前無人報名</p>
                           ) : (
                             activeBookings.map((booking: any) => (
-                              <div
-                                key={booking.id}
-                                className="flex flex-col sm:flex-row justify-between items-start sm:items-center text-sm bg-gray-50 p-3 rounded-xl border border-gray-100 gap-2"
-                              >
+                              <div key={booking.id} className="flex flex-col sm:flex-row justify-between items-start sm:items-center text-sm bg-gray-50 p-3 rounded-xl border border-gray-100 gap-2">
                                 <div className="flex-1">
                                   <div className="flex items-center gap-2 flex-wrap">
-                                    <span className="text-xs px-1.5 py-0.5 rounded font-bold bg-orange-100 text-orange-700">
-                                      已報名
-                                    </span>
+                                    <span className="text-xs px-1.5 py-0.5 rounded font-bold bg-orange-100 text-orange-700">已報名</span>
                                     <span className="font-semibold text-gray-800">{booking.users?.name}</span>
                                     <span className="text-gray-500 text-xs">({booking.users?.phone})</span>
-
-                                    <span
-                                      className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${booking.payment_method === 'online'
-                                          ? 'bg-green-100 text-green-700'
-                                          : 'bg-gray-200 text-gray-700'
-                                        }`}
-                                    >
+                                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${booking.payment_method === 'online' ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-700'}`}>
                                       {booking.payment_method === 'online' ? '📱 線上付款' : '💵 現場付款'}
                                     </span>
                                   </div>
-                                  {booking.need_paddle && (
-                                    <span className="inline-block mt-1 text-[11px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100">
-                                      🏓 需租借球拍
-                                    </span>
-                                  )}
-                                  {booking.notes && (
-                                    <p className="text-xs text-gray-500 mt-1">💬 備註：{booking.notes}</p>
-                                  )}
+                                  {booking.need_paddle && <span className="inline-block mt-1 text-[11px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100">🏓 需租借球拍</span>}
+                                  {booking.notes && <p className="text-xs text-gray-500 mt-1">💬 備註：{booking.notes}</p>}
                                 </div>
-
                                 <div className="flex items-center gap-2 w-full sm:w-auto justify-end pt-2 sm:pt-0 border-t sm:border-t-0 border-gray-200">
-                                  <button
-                                    onClick={() => handleToggleClassPayment(booking.id, booking.payment_status)}
-                                    className={`text-xs font-bold px-2.5 py-1.5 rounded-lg border transition flex items-center gap-1 ${booking.payment_status === 'paid'
-                                        ? 'bg-emerald-500 text-white border-emerald-600'
-                                        : 'bg-amber-100 text-amber-800 border-amber-300'
-                                      }`}
-                                  >
-                                    <DollarSign size={14} />
-                                    {booking.payment_status === 'paid' ? '已收款' : '待收款'}
+                                  <button onClick={() => handleToggleClassPayment(booking.id, booking.payment_status)} className={`text-xs font-bold px-2.5 py-1.5 rounded-lg border transition flex items-center gap-1 ${booking.payment_status === 'paid' ? 'bg-emerald-500 text-white border-emerald-600' : 'bg-amber-100 text-amber-800 border-amber-300'}`}>
+                                    <DollarSign size={14} /> {booking.payment_status === 'paid' ? '已收款' : '待收款'}
                                   </button>
-
-                                  <button
-                                    onClick={() => handleCancelClassBooking(booking.id)}
-                                    className="text-xs text-red-500 hover:text-red-700 font-bold px-2 py-1 bg-red-50 border border-red-200 rounded"
-                                  >
-                                    取消
-                                  </button>
+                                  <button onClick={() => handleCancelClassBooking(booking.id)} className="text-xs text-red-500 hover:text-red-700 font-bold px-2 py-1 bg-red-50 border border-red-200 rounded">取消</button>
                                 </div>
                               </div>
                             ))
@@ -2026,45 +1790,40 @@ export default function AdminPage() {
             )}
 
             {/* ========================================================================= */}
-            {/* 👥 臨打活動分頁 */}
+            {/* 👥 臨打活動分頁 (全新升級版) */}
             {/* ========================================================================= */}
             {activeTab === 'open_plays' && (
-              <div className="space-y-4">
+              <div className="space-y-4 pb-10">
+
+                <div className="flex justify-between items-center bg-blue-50 p-2 rounded-lg border border-blue-200 shadow-sm">
+                  <label className="flex items-center gap-2 text-xs font-bold text-blue-800 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={openPlayShowReportedOnly}
+                      onChange={(e) => setOpenPlayShowReportedOnly(e.target.checked)}
+                      className="accent-blue-600 w-4 h-4 rounded"
+                    />
+                    <Filter size={14} className="text-blue-600" /> 🔍 只顯示有「待核帳/未付款」的場次
+                  </label>
+                </div>
+
                 {showVisualSchedule ? (
                   <div className="bg-white p-4 rounded-xl border border-blue-300 shadow-lg animate-in fade-in zoom-in-95">
                     <div className="flex justify-between items-center mb-3 border-b pb-2">
-                      <h4 className="font-bold text-blue-800 flex items-center gap-1.5">
-                        <Eye size={18} /> 視覺化空檔快選
-                      </h4>
-                      <button onClick={() => { setShowVisualSchedule(false); setSelectedGrid([]); }} className="text-gray-400 hover:text-gray-600">
-                        <X size={20} />
-                      </button>
+                      <h4 className="font-bold text-blue-800 flex items-center gap-1.5"><Eye size={18} /> 視覺化空檔快選</h4>
+                      <button onClick={() => { setShowVisualSchedule(false); setSelectedGrid([]); }} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
                     </div>
-
                     <div className="mb-4">
                       <label className="text-xs text-gray-500 font-bold block mb-1">目標日期</label>
-                      <input
-                        type="date"
-                        value={visualDate}
-                        onChange={(e) => { setVisualDate(e.target.value); setSelectedGrid([]); }}
-                        className="w-full bg-gray-50 text-gray-900 border border-gray-300 p-2 rounded-lg text-sm focus:outline-none"
-                      />
+                      <input type="date" value={visualDate} onChange={(e) => { setVisualDate(e.target.value); setSelectedGrid([]); }} className="w-full bg-gray-50 text-gray-900 border border-gray-300 p-2 rounded-lg text-sm focus:outline-none" />
                     </div>
-
-                    <p className="text-[11px] text-gray-500 mb-2 font-bold flex items-center gap-1">
-                      <MousePointerClick size={12} /> 點擊綠色格子選擇空檔 (可跨時間與跨場地)
-                    </p>
-
+                    <p className="text-[11px] text-gray-500 mb-2 font-bold flex items-center gap-1"><MousePointerClick size={12} /> 點擊綠色格子選擇空檔 (可跨時間與跨場地)</p>
                     <div className="overflow-x-auto max-h-[400px] border border-gray-200 rounded-lg">
                       <table className="w-full text-xs text-center border-collapse">
                         <thead className="sticky top-0 z-20 shadow-sm">
                           <tr>
                             <th className="border-b p-2 bg-gray-100 text-gray-600 font-bold sticky left-0 z-30 w-16">時間</th>
-                            {courtsList.map(c => (
-                              <th key={c.id} className="border-b border-l p-2 bg-gray-100 text-gray-700 font-bold min-w-[80px]">
-                                {c.name}
-                              </th>
-                            ))}
+                            {courtsList.map(c => (<th key={c.id} className="border-b border-l p-2 bg-gray-100 text-gray-700 font-bold min-w-[80px]">{c.name}</th>))}
                           </tr>
                         </thead>
                         <tbody>
@@ -2075,360 +1834,129 @@ export default function AdminPage() {
                                 const status = checkIsOccupied(c.id, time, visualDate);
                                 const cellKey = `${c.id}_${time}`;
                                 const isSelected = selectedGrid.includes(cellKey);
-
-                                if (status.occupied) {
-                                  return (
-                                    <td key={c.id} className="border-b border-l p-1 bg-gray-200">
-                                      <span className="text-[10px] text-gray-500 font-bold block">{status.label}</span>
-                                    </td>
-                                  );
-                                }
-                                return (
-                                  <td
-                                    key={c.id}
-                                    onClick={() => toggleCellSelection(cellKey)}
-                                    className={`border-b border-l p-1 cursor-pointer transition select-none ${isSelected
-                                        ? 'bg-blue-500 text-white font-bold'
-                                        : 'bg-green-50 text-green-700 hover:bg-green-200 font-medium'
-                                      }`}
-                                  >
-                                    {isSelected ? '已選' : '空檔'}
-                                  </td>
-                                );
+                                if (status.occupied) return (<td key={c.id} className="border-b border-l p-1 bg-gray-200"><span className="text-[10px] text-gray-500 font-bold block">{status.label}</span></td>);
+                                return (<td key={c.id} onClick={() => toggleCellSelection(cellKey)} className={`border-b border-l p-1 cursor-pointer transition select-none ${isSelected ? 'bg-blue-500 text-white font-bold' : 'bg-green-50 text-green-700 hover:bg-green-200 font-medium'}`}>{isSelected ? '已選' : '空檔'}</td>);
                               })}
                             </tr>
                           ))}
                         </tbody>
                       </table>
                     </div>
-
-                    <button
-                      onClick={handleQuickConvertOpenPlay}
-                      className="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl shadow-md transition"
-                    >
-                      將選取的 {selectedGrid.length} 個時段轉為臨打
-                    </button>
+                    <button onClick={handleQuickConvertOpenPlay} className="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl shadow-md transition">將選取的 {selectedGrid.length} 個時段轉為臨打</button>
                   </div>
                 ) : (
                   <div className="flex gap-2">
-                    <button
-                      onClick={() => setIsAddingOpenPlay(!isAddingOpenPlay)}
-                      className="flex-1 py-3 bg-blue-100 text-blue-700 font-bold rounded-xl flex justify-center items-center gap-2 border border-blue-200 transition hover:bg-blue-200"
-                    >
+                    <button onClick={() => setIsAddingOpenPlay(!isAddingOpenPlay)} className="flex-1 py-3 bg-blue-100 text-blue-700 font-bold rounded-xl flex justify-center items-center gap-2 border border-blue-200 transition hover:bg-blue-200">
                       {isAddingOpenPlay ? <><X size={18} /> 取消新增</> : <><Plus size={18} /> 一般新增臨打</>}
                     </button>
-
-                    <button
-                      onClick={() => { setShowVisualSchedule(true); setIsAddingOpenPlay(false); }}
-                      className="flex-1 py-3 bg-indigo-100 text-indigo-700 font-bold rounded-xl flex justify-center items-center gap-2 border border-indigo-200 transition hover:bg-indigo-200"
-                    >
+                    <button onClick={() => { setShowVisualSchedule(true); setIsAddingOpenPlay(false); }} className="flex-1 py-3 bg-indigo-100 text-indigo-700 font-bold rounded-xl flex justify-center items-center gap-2 border border-indigo-200 transition hover:bg-indigo-200">
                       <Eye size={18} /> 空檔視覺化快選
                     </button>
                   </div>
                 )}
 
                 {isAddingOpenPlay && (
-                  <form
-                    onSubmit={submitNewOpenPlay}
-                    className="bg-white p-4 rounded-xl border-2 border-blue-400 space-y-3 shadow-md animate-in fade-in"
-                  >
+                  <form onSubmit={submitNewOpenPlay} className="bg-white p-4 rounded-xl border-2 border-blue-400 space-y-3 shadow-md animate-in fade-in">
                     <div className="flex justify-between items-center border-b pb-2">
                       <h4 className="font-bold text-blue-800 text-sm">新增臨打場次</h4>
-                      <button
-                        type="button"
-                        onClick={() => setIsAddingOpenPlay(false)}
-                        className="text-gray-400 hover:text-gray-600"
-                      >
-                        <X size={18} />
-                      </button>
+                      <button type="button" onClick={() => setIsAddingOpenPlay(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
                     </div>
-
-                    <input
-                      type="text"
-                      placeholder="場次名稱"
-                      required
-                      className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
-                      style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                      value={newOpenPlay.title}
-                      onChange={(e) => setNewOpenPlay({ ...newOpenPlay, title: e.target.value })}
-                    />
-
+                    <input type="text" placeholder="場次名稱" required className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm" style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }} value={newOpenPlay.title} onChange={(e) => setNewOpenPlay({ ...newOpenPlay, title: e.target.value })} />
                     <div>
                       <label className="text-xs text-gray-500 mb-1 block">開放場地 (可多選)</label>
                       <div className="flex flex-wrap gap-2">
                         {courtsList.map(court => (
                           <label key={court.id} className="flex items-center gap-1.5 text-sm bg-gray-50 border px-3 py-1.5 rounded-lg cursor-pointer">
-                            <input
-                              type="checkbox"
-                              className="accent-blue-600"
-                              checked={newOpenPlay.court_ids.includes(court.id)}
-                              onChange={(e) => {
-                                const newCourts = e.target.checked
-                                  ? [...newOpenPlay.court_ids, court.id]
-                                  : newOpenPlay.court_ids.filter((id: string) => id !== court.id);
-                                setNewOpenPlay({ ...newOpenPlay, court_ids: newCourts });
-                              }}
-                            />
+                            <input type="checkbox" className="accent-blue-600" checked={newOpenPlay.court_ids.includes(court.id)} onChange={(e) => { const newCourts = e.target.checked ? [...newOpenPlay.court_ids, court.id] : newOpenPlay.court_ids.filter((id: string) => id !== court.id); setNewOpenPlay({ ...newOpenPlay, court_ids: newCourts }); }} />
                             {court.name}
                           </label>
                         ))}
                       </div>
                     </div>
-
                     <div>
                       <label className="text-xs text-gray-500 mb-1 block">DUPR 等級 (可多選)</label>
                       <div className="flex flex-wrap gap-2">
                         {['2.0', '2.5', '3.0', '3.5', '4.0'].map(lvl => (
                           <label key={lvl} className="flex items-center gap-1.5 text-sm bg-gray-50 border px-3 py-1.5 rounded-lg cursor-pointer">
-                            <input
-                              type="checkbox"
-                              className="accent-blue-600"
-                              checked={newOpenPlay.level.includes(lvl)}
-                              onChange={(e) => {
-                                const newLevels = e.target.checked
-                                  ? [...newOpenPlay.level, lvl]
-                                  : newOpenPlay.level.filter(l => l !== lvl);
-                                setNewOpenPlay({ ...newOpenPlay, level: newLevels });
-                              }}
-                            />
+                            <input type="checkbox" className="accent-blue-600" checked={newOpenPlay.level.includes(lvl)} onChange={(e) => { const newLevels = e.target.checked ? [...newOpenPlay.level, lvl] : newOpenPlay.level.filter(l => l !== lvl); setNewOpenPlay({ ...newOpenPlay, level: newLevels }); }} />
                             {lvl}
                           </label>
                         ))}
                       </div>
                     </div>
-
-                    <input
-                      type="date"
-                      required
-                      className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
-                      style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                      value={newOpenPlay.session_date}
-                      onChange={(e) => setNewOpenPlay({ ...newOpenPlay, session_date: e.target.value })}
-                    />
+                    <input type="date" required className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm" style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }} value={newOpenPlay.session_date} onChange={(e) => setNewOpenPlay({ ...newOpenPlay, session_date: e.target.value })} />
                     <div className="flex gap-2">
-                      <input
-                        type="time"
-                        required
-                        className="flex-1 bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
-                        style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                        value={newOpenPlay.start_time}
-                        onChange={(e) => setNewOpenPlay({ ...newOpenPlay, start_time: e.target.value })}
-                      />
-                      <input
-                        type="time"
-                        required
-                        className="flex-1 bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
-                        style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                        value={newOpenPlay.end_time}
-                        onChange={(e) => setNewOpenPlay({ ...newOpenPlay, end_time: e.target.value })}
-                      />
+                      <input type="time" required className="flex-1 bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm" style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }} value={newOpenPlay.start_time} onChange={(e) => setNewOpenPlay({ ...newOpenPlay, start_time: e.target.value })} />
+                      <input type="time" required className="flex-1 bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm" style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }} value={newOpenPlay.end_time} onChange={(e) => setNewOpenPlay({ ...newOpenPlay, end_time: e.target.value })} />
                     </div>
-
                     <div className="grid grid-cols-3 gap-2">
-                      <div>
-                        <label className="text-xs text-gray-500 mb-1 block">正取人數</label>
-                        <input
-                          type="number"
-                          required
-                          className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
-                          style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                          value={newOpenPlay.max_players}
-                          onChange={(e) => setNewOpenPlay({ ...newOpenPlay, max_players: Number(e.target.value) })}
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs text-gray-500 mb-1 block">候補人數</label>
-                        <input
-                          type="number"
-                          required
-                          className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
-                          style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                          value={newOpenPlay.max_waitlist}
-                          onChange={(e) => setNewOpenPlay({ ...newOpenPlay, max_waitlist: Number(e.target.value) })}
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs text-gray-500 mb-1 block">價格 (元)</label>
-                        <input
-                          type="number"
-                          required
-                          className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
-                          style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                          value={newOpenPlay.price}
-                          onChange={(e) => setNewOpenPlay({ ...newOpenPlay, price: Number(e.target.value) })}
-                        />
-                      </div>
+                      <div><label className="text-xs text-gray-500 mb-1 block">正取人數</label><input type="number" required className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm" style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }} value={newOpenPlay.max_players} onChange={(e) => setNewOpenPlay({ ...newOpenPlay, max_players: Number(e.target.value) })} /></div>
+                      <div><label className="text-xs text-gray-500 mb-1 block">候補人數</label><input type="number" required className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm" style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }} value={newOpenPlay.max_waitlist} onChange={(e) => setNewOpenPlay({ ...newOpenPlay, max_waitlist: Number(e.target.value) })} /></div>
+                      <div><label className="text-xs text-gray-500 mb-1 block">價格 (元)</label><input type="number" required className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm" style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }} value={newOpenPlay.price} onChange={(e) => setNewOpenPlay({ ...newOpenPlay, price: Number(e.target.value) })} /></div>
                     </div>
-
-                    <input
-                      type="text"
-                      placeholder="備註 (選填，例如：含教練指導)"
-                      className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
-                      style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                      value={newOpenPlay.notes}
-                      onChange={(e) => setNewOpenPlay({ ...newOpenPlay, notes: e.target.value })}
-                    />
-
-                    <button type="submit" className="w-full bg-blue-600 text-white font-bold py-2 rounded-lg shadow">
-                      確認新增
-                    </button>
+                    <input type="text" placeholder="備註 (選填，例如：含教練指導)" className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm" style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }} value={newOpenPlay.notes} onChange={(e) => setNewOpenPlay({ ...newOpenPlay, notes: e.target.value })} />
+                    <button type="submit" className="w-full bg-blue-600 text-white font-bold py-2 rounded-lg shadow">確認新增</button>
                   </form>
                 )}
 
                 {openPlaySessions.length === 0 ? (
                   <p className="text-center text-gray-500 mt-10">無近期臨打場次 (超過7天請至歷史查詢)</p>
                 ) : (
-                  openPlaySessions.map((session) => {
-                    const activePlayers = session.open_play_players?.filter((p: any) => p.status !== 'cancelled') || [];
+                  openPlaySessions.filter(session => {
+                    if (!openPlayShowReportedOnly) return true;
+                    // 如果勾選待核帳過濾，只顯示該場次中有任何人是 reported, pending 或 unpaid 的
+                    return session.open_play_players?.some((p: any) => p.status !== 'cancelled' && (p.payment_status === 'reported' || p.payment_status === 'pending' || p.payment_status === 'unpaid'));
+                  }).map((session) => {
+                    // 🌟 重新排序：正取 -> 候補 -> 取消
+                    const allPlayers = [...(session.open_play_players || [])].sort((a: any, b: any) => {
+                      const rank: Record<string, number> = { registered: 1, waitlisted: 2, cancelled: 3 };
+                      if (rank[a.status] !== rank[b.status]) return rank[a.status] - rank[b.status];
+                      return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+                    });
+
+                    const activeCount = allPlayers.filter((p) => p.status === 'registered').length;
 
                     if (editingOpenPlayId === session.id) {
                       return (
-                        <form
-                          key={session.id}
-                          onSubmit={submitEditOpenPlay}
-                          className="bg-blue-50 p-4 rounded-xl border-2 border-blue-400 space-y-3 shadow-md animate-in fade-in"
-                        >
+                        <form key={session.id} onSubmit={submitEditOpenPlay} className="bg-blue-50 p-4 rounded-xl border-2 border-blue-400 space-y-3 shadow-md animate-in fade-in">
                           <h4 className="font-bold text-blue-800 border-b border-blue-200 pb-2">✏️ 編輯臨打場次</h4>
-                          <input
-                            type="text"
-                            placeholder="場次名稱"
-                            required
-                            className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
-                            style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                            value={editOpenPlay.title}
-                            onChange={(e) => setEditOpenPlay({ ...editOpenPlay, title: e.target.value })}
-                          />
-
+                          <input type="text" placeholder="場次名稱" required className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm" style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }} value={editOpenPlay.title} onChange={(e) => setEditOpenPlay({ ...editOpenPlay, title: e.target.value })} />
                           <div>
                             <label className="text-xs text-gray-500 mb-1 block">開放場地 (可多選)</label>
                             <div className="flex flex-wrap gap-2">
                               {courtsList.map(court => (
                                 <label key={court.id} className="flex items-center gap-1.5 text-sm bg-gray-50 border px-3 py-1.5 rounded-lg cursor-pointer">
-                                  <input
-                                    type="checkbox"
-                                    className="accent-blue-600"
-                                    checked={editOpenPlay.court_ids.includes(court.id)}
-                                    onChange={(e) => {
-                                      const newCourts = e.target.checked
-                                        ? [...editOpenPlay.court_ids, court.id]
-                                        : editOpenPlay.court_ids.filter(id => id !== court.id);
-                                      setEditOpenPlay({ ...editOpenPlay, court_ids: newCourts });
-                                    }}
-                                  />
+                                  <input type="checkbox" className="accent-blue-600" checked={editOpenPlay.court_ids.includes(court.id)} onChange={(e) => { const newCourts = e.target.checked ? [...editOpenPlay.court_ids, court.id] : editOpenPlay.court_ids.filter(id => id !== court.id); setEditOpenPlay({ ...editOpenPlay, court_ids: newCourts }); }} />
                                   {court.name}
                                 </label>
                               ))}
                             </div>
                           </div>
-
                           <div>
                             <label className="text-xs text-gray-500 mb-1 block">DUPR 等級 (可多選)</label>
                             <div className="flex flex-wrap gap-2">
                               {['2.0', '2.5', '3.0', '3.5', '4.0'].map(lvl => (
                                 <label key={lvl} className="flex items-center gap-1.5 text-sm bg-gray-50 border px-3 py-1.5 rounded-lg cursor-pointer">
-                                  <input
-                                    type="checkbox"
-                                    className="accent-blue-600"
-                                    checked={editOpenPlay.level.includes(lvl)}
-                                    onChange={(e) => {
-                                      const newLevels = e.target.checked
-                                        ? [...editOpenPlay.level, lvl]
-                                        : editOpenPlay.level.filter(l => l !== lvl);
-                                      setEditOpenPlay({ ...editOpenPlay, level: newLevels });
-                                    }}
-                                  />
+                                  <input type="checkbox" className="accent-blue-600" checked={editOpenPlay.level.includes(lvl)} onChange={(e) => { const newLevels = e.target.checked ? [...editOpenPlay.level, lvl] : editOpenPlay.level.filter(l => l !== lvl); setEditOpenPlay({ ...editOpenPlay, level: newLevels }); }} />
                                   {lvl}
                                 </label>
                               ))}
                             </div>
                           </div>
-
-                          <input
-                            type="date"
-                            required
-                            className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
-                            style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                            value={editOpenPlay.session_date}
-                            onChange={(e) => setEditOpenPlay({ ...editOpenPlay, session_date: e.target.value })}
-                          />
+                          <input type="date" required className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm" style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }} value={editOpenPlay.session_date} onChange={(e) => setEditOpenPlay({ ...editOpenPlay, session_date: e.target.value })} />
                           <div className="flex gap-2">
-                            <input
-                              type="time"
-                              required
-                              className="flex-1 bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
-                              style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                              value={editOpenPlay.start_time}
-                              onChange={(e) => setEditOpenPlay({ ...editOpenPlay, start_time: e.target.value })}
-                            />
-                            <input
-                              type="time"
-                              required
-                              className="flex-1 bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
-                              style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                              value={editOpenPlay.end_time}
-                              onChange={(e) => setEditOpenPlay({ ...editOpenPlay, end_time: e.target.value })}
-                            />
+                            <input type="time" required className="flex-1 bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm" style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }} value={editOpenPlay.start_time} onChange={(e) => setEditOpenPlay({ ...editOpenPlay, start_time: e.target.value })} />
+                            <input type="time" required className="flex-1 bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm" style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }} value={editOpenPlay.end_time} onChange={(e) => setEditOpenPlay({ ...editOpenPlay, end_time: e.target.value })} />
                           </div>
-
                           <div className="grid grid-cols-3 gap-2">
-                            <div>
-                              <label className="text-xs text-gray-500 mb-1 block">正取人數</label>
-                              <input
-                                type="number"
-                                required
-                                className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
-                                style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                                value={editOpenPlay.max_players}
-                                onChange={(e) => setEditOpenPlay({ ...editOpenPlay, max_players: Number(e.target.value) })}
-                              />
-                            </div>
-                            <div>
-                              <label className="text-xs text-gray-500 mb-1 block">候補人數</label>
-                              <input
-                                type="number"
-                                required
-                                className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
-                                style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                                value={editOpenPlay.max_waitlist}
-                                onChange={(e) => setEditOpenPlay({ ...editOpenPlay, max_waitlist: Number(e.target.value) })}
-                              />
-                            </div>
-                            <div>
-                              <label className="text-xs text-gray-500 mb-1 block">價格 (元)</label>
-                              <input
-                                type="number"
-                                required
-                                className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
-                                style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                                value={editOpenPlay.price}
-                                onChange={(e) => setEditOpenPlay({ ...editOpenPlay, price: Number(e.target.value) })}
-                              />
-                            </div>
+                            <div><label className="text-xs text-gray-500 mb-1 block">正取人數</label><input type="number" required className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm" style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }} value={editOpenPlay.max_players} onChange={(e) => setEditOpenPlay({ ...editOpenPlay, max_players: Number(e.target.value) })} /></div>
+                            <div><label className="text-xs text-gray-500 mb-1 block">候補人數</label><input type="number" required className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm" style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }} value={editOpenPlay.max_waitlist} onChange={(e) => setEditOpenPlay({ ...editOpenPlay, max_waitlist: Number(e.target.value) })} /></div>
+                            <div><label className="text-xs text-gray-500 mb-1 block">價格 (元)</label><input type="number" required className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm" style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }} value={editOpenPlay.price} onChange={(e) => setEditOpenPlay({ ...editOpenPlay, price: Number(e.target.value) })} /></div>
                           </div>
-
-                          <input
-                            type="text"
-                            placeholder="備註 (選填)"
-                            className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm"
-                            style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                            value={editOpenPlay.notes}
-                            onChange={(e) => setEditOpenPlay({ ...editOpenPlay, notes: e.target.value })}
-                          />
-
+                          <input type="text" placeholder="備註 (選填)" className="w-full bg-white text-gray-900 border border-gray-300 p-2 rounded-lg text-sm" style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }} value={editOpenPlay.notes} onChange={(e) => setEditOpenPlay({ ...editOpenPlay, notes: e.target.value })} />
                           <div className="flex gap-2 pt-2">
-                            <button
-                              type="button"
-                              onClick={() => setEditingOpenPlayId(null)}
-                              className="flex-1 bg-white border border-gray-300 text-gray-600 font-bold py-2 rounded-lg text-sm"
-                            >
-                              取消
-                            </button>
-                            <button
-                              type="submit"
-                              className="flex-1 bg-blue-600 text-white font-bold py-2 rounded-lg text-sm shadow"
-                            >
-                              儲存修改
-                            </button>
+                            <button type="button" onClick={() => setEditingOpenPlayId(null)} className="flex-1 bg-white border border-gray-300 text-gray-600 font-bold py-2 rounded-lg text-sm">取消</button>
+                            <button type="submit" className="flex-1 bg-blue-600 text-white font-bold py-2 rounded-lg text-sm shadow">儲存修改</button>
                           </div>
                         </form>
                       );
@@ -2438,43 +1966,18 @@ export default function AdminPage() {
                       <div key={session.id} className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
                         <div className="bg-blue-50 p-4 border-b border-blue-100 flex justify-between items-start">
                           <div>
-                            <span className="text-xs font-bold text-blue-700 bg-blue-100 px-2 py-0.5 rounded mb-1 inline-block">
-                              DUPR {session.level}
-                            </span>
+                            <span className="text-xs font-bold text-blue-700 bg-blue-100 px-2 py-0.5 rounded mb-1 inline-block">DUPR {session.level}</span>
                             <h3 className="font-bold text-gray-800 text-base">{session.title}</h3>
-                            <p className="text-sm text-gray-600 mt-1">
-                              📅 {session.session_date} | {session.start_time?.slice(0, 5)}-{session.end_time?.slice(0, 5)}
-                            </p>
-                            <p className="text-xs text-blue-600 font-bold mt-1">
-                              💰 ${session.price} / 人 (正取 {session.max_players} 人 / 候補 {session.max_waitlist} 人)
-                            </p>
+                            <p className="text-sm text-gray-600 mt-1">📅 {session.session_date} | {session.start_time?.slice(0, 5)}-{session.end_time?.slice(0, 5)}</p>
+                            <p className="text-xs text-blue-600 font-bold mt-1">💰 ${session.price} / 人 (正取 {session.max_players} 人 / 候補 {session.max_waitlist} 人)</p>
                             {session.notes && <p className="text-xs text-gray-500 mt-1">📝 館方備註：{session.notes}</p>}
                           </div>
-
                           <div className="flex flex-col items-end gap-2 shrink-0">
-                            <span className="text-xs font-bold text-blue-700 bg-blue-200 px-2 py-1 rounded">
-                              {getCourtNames(session)}
-                            </span>
+                            <span className="text-xs font-bold text-blue-700 bg-blue-200 px-2 py-1 rounded">{getCourtNames(session)}</span>
                             <div className="flex items-center gap-2 mt-1">
-                              <button
-                                onClick={() => handleDuplicateOpenPlay(session)}
-                                title="複製為新場次"
-                                className="flex items-center gap-0.5 text-xs font-bold text-gray-600 hover:text-gray-900 bg-white border border-gray-300 px-1.5 py-1 rounded"
-                              >
-                                <Copy size={12} /> 複製
-                              </button>
-                              <button
-                                onClick={() => startEditingOpenPlay(session)}
-                                className="flex items-center gap-1 text-xs font-bold text-blue-600 hover:text-blue-800"
-                              >
-                                <Edit size={14} /> 編輯
-                              </button>
-                              <button
-                                onClick={() => handleDeleteOpenPlaySession(session.id)}
-                                className="flex items-center gap-1 text-xs font-bold text-red-500 hover:text-red-700"
-                              >
-                                <Trash2 size={14} /> 刪除
-                              </button>
+                              <button onClick={() => handleDuplicateOpenPlay(session)} title="複製為新場次" className="flex items-center gap-0.5 text-xs font-bold text-gray-600 hover:text-gray-900 bg-white border border-gray-300 px-1.5 py-1 rounded"><Copy size={12} /> 複製</button>
+                              <button onClick={() => startEditingOpenPlay(session)} className="flex items-center gap-1 text-xs font-bold text-blue-600 hover:text-blue-800"><Edit size={14} /> 編輯</button>
+                              <button onClick={() => handleDeleteOpenPlaySession(session.id)} className="flex items-center gap-1 text-xs font-bold text-red-500 hover:text-red-700"><Trash2 size={14} /> 刪除</button>
                             </div>
                           </div>
                         </div>
@@ -2482,7 +1985,7 @@ export default function AdminPage() {
                         <div className="p-4 space-y-3">
                           <div className="flex justify-between items-center pb-2 border-b border-gray-100">
                             <span className="text-xs font-bold text-gray-500">
-                              目前報名名冊 ({activePlayers.length} 人)
+                              目前報名名冊 (正取 {activeCount} 人 / 總計 {allPlayers.length} 筆紀錄)
                             </span>
                             <button
                               onClick={() => setAgentBookingSession(session)}
@@ -2492,74 +1995,110 @@ export default function AdminPage() {
                             </button>
                           </div>
 
-                          {activePlayers.length === 0 ? (
+                          {allPlayers.length === 0 ? (
                             <p className="text-sm text-gray-400 text-center py-2">目前無人報名</p>
                           ) : (
-                            activePlayers.map((player: any) => (
-                              <div
-                                key={player.id}
-                                className="flex flex-col sm:flex-row justify-between items-start sm:items-center text-sm bg-gray-50 p-3 rounded-xl border border-gray-100 gap-2"
-                              >
-                                <div className="flex-1">
-                                  <div className="flex items-center gap-2 flex-wrap">
-                                    <span
-                                      className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${player.status === 'registered'
-                                          ? 'bg-blue-100 text-blue-700'
-                                          : 'bg-amber-100 text-amber-700'
-                                        }`}
-                                    >
-                                      {player.status === 'registered' ? '正取' : '候補'}
-                                    </span>
-                                    <span className="font-semibold text-gray-800">{player.users?.name}</span>
-                                    <span className="text-gray-500 text-xs">({player.users?.phone})</span>
+                            allPlayers.map((player: any) => {
+                              const isCancelled = player.status === 'cancelled';
+                              const isWaitlisted = player.status === 'waitlisted';
 
-                                    <span
-                                      className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${player.payment_method === 'online'
-                                          ? 'bg-green-100 text-green-700'
-                                          : 'bg-gray-200 text-gray-700'
-                                        }`}
-                                    >
-                                      {player.payment_method === 'online' ? '📱 線上付款' : '💵 現場付款'}
+                              return (
+                                <div key={player.id} className={`flex flex-col text-sm p-3 rounded-xl border gap-2 ${isCancelled ? 'bg-gray-100 border-gray-200 opacity-80' : 'bg-gray-50 border-gray-100'}`}>
+                                  <div className="flex justify-between items-start">
+                                    <div className="flex flex-col gap-0.5">
+                                      <div className="flex items-center gap-1.5 flex-wrap">
+                                        <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${player.status === 'registered' ? 'bg-blue-100 text-blue-700' : isWaitlisted ? 'bg-amber-100 text-amber-700' : 'bg-gray-200 text-gray-600'}`}>
+                                          {player.status === 'registered' ? '正取' : isWaitlisted ? '候補' : '已取消'}
+                                        </span>
+                                        <span className={`font-semibold text-gray-800 ${isCancelled ? 'line-through' : ''}`}>
+                                          {player.display_name || '球友'}
+                                        </span>
+                                        <span className="text-gray-500 text-[10px] bg-white border px-1 rounded">
+                                          (LINE: {player.line_nickname || '未填'} | 📱 {player.users?.phone})
+                                        </span>
+                                      </div>
+                                      <span className="text-[10px] text-gray-400">報名時間: {new Date(player.created_at).toLocaleString('zh-TW')}</span>
+                                    </div>
+                                    <span className="text-[10px] text-gray-400 border border-gray-200 px-1.5 py-0.5 rounded bg-white shrink-0">
+                                      編號: {player.booking_no || player.id}
                                     </span>
                                   </div>
 
-                                  {player.player_notes && (
-                                    <p className="text-xs text-gray-500 mt-1">💬 備註：{player.player_notes}</p>
+                                  {!isWaitlisted && !isCancelled && (
+                                    <div className="text-[11px] grid grid-cols-2 gap-2 bg-white p-2 rounded-lg border border-gray-100 shadow-sm mt-1">
+                                      <div><span className="text-gray-400 block mb-0.5">應付金額</span><span className="font-bold text-blue-600 text-sm">${session.price}</span></div>
+                                      <div>
+                                        <span className="text-gray-400 block mb-0.5">付款狀態</span>
+                                        <span className={`font-bold flex items-center gap-1 ${player.payment_status === 'pending' || player.payment_status === 'unpaid' ? 'text-amber-600' : player.payment_status === 'reported' ? 'text-indigo-600' : 'text-emerald-600'}`}>
+                                          {player.payment_status === 'pending' ? <><Clock size={12} /> 保留中 ({getAdminTimeLeftStr(player.payment_deadline)})</>
+                                            : player.payment_status === 'reported' ? '🔍 待核帳'
+                                              : player.payment_status === 'confirmed' || player.payment_status === 'paid' ? '✅ 已確認' : '⚠️ 待收款'}
+                                        </span>
+                                      </div>
+
+                                      {(player.payment_status === 'reported' || player.payment_status === 'confirmed') && (
+                                        <div className="col-span-2 border-t border-gray-50 pt-1.5 mt-0.5 flex justify-between items-center text-[10px] text-gray-500">
+                                          <span>
+                                            💳 {player.payment_method === 'online' ? '線上' : '現場'}
+                                            {player.payment_account_last5 && player.payment_account_last5 !== 'NA' && ` (末五碼: ${player.payment_account_last5})`}
+                                          </span>
+                                          {player.payment_report_time && <span>回報: {new Date(player.payment_report_time).toLocaleString('zh-TW')}</span>}
+                                        </div>
+                                      )}
+                                    </div>
                                   )}
+
+                                  {isCancelled && (
+                                    <div className="text-[11px] bg-white p-2 rounded-lg border border-gray-200 mt-1">
+                                      <p className="font-bold text-gray-700 mb-1 border-b pb-1">款項處理狀態：{player.refund_status === 'refunded' ? <span className="text-emerald-600">已退款</span> : <span className="text-amber-600">待處理 / 無需退款</span>}</p>
+                                      {player.refund_status === 'refunded' && (
+                                        <div className="text-gray-500 space-y-0.5 pt-0.5">
+                                          <p>退款金額: ${player.refund_amount} | 方式: {player.refund_method}</p>
+                                          {player.refund_time && <p>退款時間: {new Date(player.refund_time).toLocaleString('zh-TW')}</p>}
+                                          {player.refund_note && <p>備註: {player.refund_note}</p>}
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+
+                                  {player.player_notes && <p className="text-xs text-gray-500 mt-1">💬 備註：{player.player_notes}</p>}
+
+                                  {/* 🌟 臨打核帳與操作按鈕群 */}
+                                  <div className="flex items-center gap-2 w-full justify-end pt-2 border-t border-gray-200 mt-1">
+
+                                    {player.payment_status === 'reported' && player.status === 'registered' && (
+                                      <button onClick={() => handleAdminConfirmPayment(player.id)} className="text-xs font-bold px-3 py-1.5 rounded-lg bg-emerald-600 text-white shadow-sm hover:bg-emerald-700 transition flex items-center gap-1">
+                                        <CheckCircle2 size={14} /> 確認收款
+                                      </button>
+                                    )}
+
+                                    {(player.payment_status === 'confirmed' || player.payment_status === 'paid') && player.status === 'registered' && (
+                                      <button onClick={() => handleAdminRevokePayment(player.id)} className="text-[11px] font-bold px-3 py-1.5 rounded-lg bg-gray-200 text-gray-700 hover:bg-gray-300 transition flex items-center gap-1">
+                                        <History size={13} /> 取消收款確認
+                                      </button>
+                                    )}
+
+                                    {isWaitlisted && (
+                                      <button onClick={() => handlePromotePlayer(player.id, session.id)} className="text-xs flex items-center gap-1 text-emerald-600 hover:text-emerald-800 font-bold px-3 py-1.5 bg-emerald-50 border border-emerald-200 rounded-lg">
+                                        <CheckCircle size={12} /> 轉正取
+                                      </button>
+                                    )}
+
+                                    {isCancelled && player.refund_status !== 'refunded' && (
+                                      <button onClick={() => setActiveRefundPlayer({ ...player, session_price: session.price })} className="text-xs font-bold px-3 py-1.5 rounded-lg bg-amber-100 text-amber-800 border border-amber-300 hover:bg-amber-200 transition">
+                                        退款確認
+                                      </button>
+                                    )}
+
+                                    {!isCancelled && (
+                                      <button onClick={() => handleCancelOpenPlayPlayer(player.id)} className="text-xs text-red-500 hover:text-red-700 font-bold px-3 py-1.5 bg-red-50 border border-red-200 rounded-lg transition">
+                                        取消
+                                      </button>
+                                    )}
+                                  </div>
                                 </div>
-
-                                <div className="flex items-center gap-2 w-full sm:w-auto justify-end pt-2 sm:pt-0 border-t sm:border-t-0 border-gray-200">
-                                  {player.status === 'registered' && (
-                                    <button
-                                      onClick={() => handleToggleOpenPlayPayment(player.id, player.payment_status)}
-                                      className={`text-xs font-bold px-2.5 py-1.5 rounded-lg border transition flex items-center gap-1 ${player.payment_status === 'paid'
-                                          ? 'bg-emerald-500 text-white border-emerald-600'
-                                          : 'bg-amber-100 text-amber-800 border-amber-300'
-                                        }`}
-                                    >
-                                      <DollarSign size={14} />
-                                      {player.payment_status === 'paid' ? '已收款' : '待收款'}
-                                    </button>
-                                  )}
-
-                                  {player.status === 'waitlisted' && (
-                                    <button
-                                      onClick={() => handlePromotePlayer(player.id, session.id)}
-                                      className="text-xs flex items-center gap-1 text-emerald-600 hover:text-emerald-800 font-bold px-2 py-1 bg-emerald-50 border border-emerald-200 rounded"
-                                    >
-                                      <CheckCircle size={12} /> 轉正取
-                                    </button>
-                                  )}
-
-                                  <button
-                                    onClick={() => handleCancelOpenPlayPlayer(player.id)}
-                                    className="text-xs text-red-500 hover:text-red-700 font-bold px-2 py-1 bg-red-50 border border-red-200 rounded"
-                                  >
-                                    取消
-                                  </button>
-                                </div>
-                              </div>
-                            ))
+                              );
+                            })
                           )}
                         </div>
                       </div>
@@ -2568,423 +2107,158 @@ export default function AdminPage() {
                 )}
               </div>
             )}
-
-            {/* ========================================================================= */}
-            {/* ⚙️ 設定分頁 (包含新增的線上收款連結區塊) */}
-            {/* ========================================================================= */}
-            {activeTab === 'settings' && (
-              <div className="space-y-4 animate-in fade-in pb-10">
-                <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200 space-y-4">
-                  <h3 className="font-bold text-gray-800 text-base border-b pb-2 flex items-center gap-2">
-                    <Settings size={18} className="text-purple-600" /> 場館與後台帳號設定
-                  </h3>
-
-                  <form onSubmit={handleSaveSettings} className="space-y-4">
-                    <div>
-                      <label className="text-xs font-bold text-gray-600 mb-1 block">場館名稱</label>
-                      <input
-                        type="text"
-                        required
-                        className="w-full bg-white text-gray-900 border border-gray-300 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-                        style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                        value={tempVenueName}
-                        onChange={(e) => setTempVenueName(e.target.value)}
-                      />
-                    </div>
-
-                    <div>
-                      <label className="text-xs font-bold text-gray-600 mb-1 block">官方 LINE 連結 (球友付款回報用)</label>
-                      <input
-                        type="text"
-                        required
-                        placeholder="https://lin.ee/..."
-                        className="w-full bg-white text-gray-900 border border-gray-300 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-                        style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                        value={tempLineUrl}
-                        onChange={(e) => setTempLineUrl(e.target.value)}
-                      />
-                    </div>
-
-                    {/* 🌟 新增：線上收款連結與帳戶設定區塊 */}
-                    <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl space-y-3 mt-4">
-                      <h4 className="font-bold text-blue-800 text-sm flex items-center gap-2">
-                        <CreditCard size={16} /> 線上收款連結與帳戶設定
-                      </h4>
-                      <p className="text-[11px] text-gray-500">
-                        這些資訊將在球友前台預約結帳時顯示，提供更直覺的點擊付款體驗。
-                      </p>
-
-                      <div>
-                        <label className="text-xs font-bold text-gray-600 mb-1 block">LINE Pay 轉帳連結</label>
-                        <input
-                          type="text"
-                          placeholder="例如: https://line.me/R/pay/..."
-                          className="w-full bg-white text-gray-900 border border-gray-300 rounded-xl p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                          value={tempPaymentLine}
-                          onChange={(e) => setTempPaymentLine(e.target.value)}
-                        />
-                      </div>
-
-                      <div>
-                        <label className="text-xs font-bold text-gray-600 mb-1 block">街口支付 轉帳連結</label>
-                        <input
-                          type="text"
-                          placeholder="例如: https://www.jkopay.com/..."
-                          className="w-full bg-white text-gray-900 border border-gray-300 rounded-xl p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                          value={tempPaymentJko}
-                          onChange={(e) => setTempPaymentJko(e.target.value)}
-                        />
-                      </div>
-
-                      <div>
-                        <label className="text-xs font-bold text-gray-600 mb-1 block">台灣 Pay (TWQR) 連結</label>
-                        <input
-                          type="text"
-                          placeholder="請輸入 TWQR 付款網址..."
-                          className="w-full bg-white text-gray-900 border border-gray-300 rounded-xl p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                          value={tempPaymentTwqr}
-                          onChange={(e) => setTempPaymentTwqr(e.target.value)}
-                        />
-                      </div>
-
-                      <div>
-                        <label className="text-xs font-bold text-gray-600 mb-1 block">銀行匯款帳號</label>
-                        <textarea
-                          rows={2}
-                          placeholder="例如：中國信託(822) 12345678901234"
-                          className="w-full bg-white text-gray-900 border border-gray-300 rounded-xl p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-                          style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                          value={tempPaymentBank}
-                          onChange={(e) => setTempPaymentBank(e.target.value)}
-                        />
-                      </div>
-                    </div>
-
-                    <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl space-y-3 mt-4">
-                      <h4 className="font-bold text-amber-800 text-sm flex items-center gap-2">
-                        <AlertCircle size={16} /> 首頁緊急公告設定
-                      </h4>
-
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          id="announceToggle"
-                          className="w-4 h-4 accent-amber-600 rounded"
-                          checked={tempAnnouncementActive}
-                          onChange={(e) => setTempAnnouncementActive(e.target.checked)}
-                        />
-                        <label htmlFor="announceToggle" className="text-sm font-bold text-gray-700 cursor-pointer">
-                          啟用首頁公告橫幅
-                        </label>
-                      </div>
-
-                      {tempAnnouncementActive && (
-                        <textarea
-                          rows={2}
-                          placeholder="請輸入公告內容，例如：今日因颱風休館一天。"
-                          className="w-full bg-white text-gray-900 border border-gray-300 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 resize-none"
-                          style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                          value={tempAnnouncementText}
-                          onChange={(e) => setTempAnnouncementText(e.target.value)}
-                        />
-                      )}
-                    </div>
-
-                    <div className="p-4 bg-gray-50 border border-gray-200 rounded-xl space-y-3 mt-4">
-                      <h4 className="font-bold text-gray-800 text-sm flex items-center gap-2">
-                        <Clock size={16} className="text-gray-600" /> 取消預約規則設定
-                      </h4>
-                      <div>
-                        <label className="text-xs font-bold text-gray-600 mb-1 block">開打前幾小時禁止取消預約？</label>
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="number"
-                            min="0"
-                            className="w-24 bg-white text-gray-900 border border-gray-300 rounded-xl p-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-                            style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                            value={tempCancelLimitHours}
-                            onChange={(e) => setTempCancelLimitHours(e.target.value)}
-                          />
-                          <span className="text-sm text-gray-600 font-bold">小時</span>
-                        </div>
-                        <p className="text-[11px] text-gray-400 mt-1">
-                          設定為 0 表示不限制；設定為 3 表示開打前 3 小時內，球友前台將無法點擊取消按鈕。
-                        </p>
-                      </div>
-                    </div>
-
-                    <button
-                      type="submit"
-                      className="w-full bg-purple-600 text-white font-bold py-3 rounded-xl shadow-md hover:bg-purple-700 transition active:scale-95 text-sm mt-4"
-                    >
-                      儲存基本設定變更
-                    </button>
-                  </form>
-                </div>
-
-                <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200 space-y-4">
-                  <h3 className="font-bold text-gray-800 text-base border-b pb-2 flex items-center gap-2">
-                    <CalendarPlus size={18} className="text-amber-600" /> 國定假日 / 特殊日管理
-                  </h3>
-                  <p className="text-xs text-gray-500">
-                    設定在此清單中的日期，系統將自動強制以「假日費率」計算，解決平日遇到國定假日的計費問題。
-                  </p>
-
-                  <form onSubmit={handleAddSpecialDate} className="flex gap-2 items-end">
-                    <div className="flex-1">
-                      <label className="text-xs font-bold text-gray-600 mb-1 block">選擇日期</label>
-                      <input
-                        type="date"
-                        required
-                        className="w-full bg-white text-gray-900 border border-gray-300 rounded-xl p-2.5 text-sm"
-                        style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                        value={newSpecialDate}
-                        onChange={(e) => setNewSpecialDate(e.target.value)}
-                      />
-                    </div>
-                    <div className="flex-1">
-                      <label className="text-xs font-bold text-gray-600 mb-1 block">說明 (選填)</label>
-                      <input
-                        type="text"
-                        placeholder="例如: 國慶日"
-                        className="w-full bg-white text-gray-900 border border-gray-300 rounded-xl p-2.5 text-sm"
-                        style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                        value={newSpecialDesc}
-                        onChange={(e) => setNewSpecialDesc(e.target.value)}
-                      />
-                    </div>
-                    <button
-                      type="submit"
-                      className="bg-amber-600 hover:bg-amber-700 text-white font-bold px-4 py-2.5 rounded-xl text-sm shadow transition shrink-0"
-                    >
-                      新增
-                    </button>
-                  </form>
-
-                  <div className="space-y-2 pt-2 max-h-48 overflow-y-auto">
-                    {specialDates.length === 0 ? (
-                      <p className="text-xs text-gray-400 text-center py-2">目前無特殊日設定</p>
-                    ) : (
-                      specialDates.map((spec) => (
-                        <div key={spec.date} className="flex justify-between items-center bg-gray-50 p-2.5 rounded-xl border text-xs">
-                          <div>
-                            <span className="font-bold text-gray-800">{spec.date}</span>
-                            <span className="text-gray-500 ml-2">({spec.description || '國定假日'})</span>
-                          </div>
-                          <button
-                            onClick={() => handleDeleteSpecialDate(spec.date)}
-                            className="text-red-500 hover:text-red-700 font-bold p-1"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-
-                <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200 space-y-4">
-                  <h3 className="font-bold text-gray-800 text-base border-b pb-2 flex items-center gap-2">
-                    <DollarSign size={18} className="text-emerald-600" /> 動態費率時段規則設定
-                  </h3>
-                  <p className="text-xs text-gray-500">
-                    設定平日與假日不同時段的每半小時單價。
-                  </p>
-
-                  <form onSubmit={handleAddPricingRule} className="grid grid-cols-2 gap-2 bg-gray-50 p-3 rounded-xl border">
-                    <div>
-                      <label className="text-xs font-bold text-gray-600 mb-1 block">適用日型</label>
-                      <select
-                        className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2 text-xs"
-                        style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                        value={newRuleDayType}
-                        onChange={(e) => setNewRuleDayType(e.target.value)}
-                      >
-                        <option value="weekday">平日 (Weekday)</option>
-                        <option value="weekend">假日 (Weekend)</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="text-xs font-bold text-gray-600 mb-1 block">每半小時價格 (元)</label>
-                      <input
-                        type="number"
-                        required
-                        min="0"
-                        className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2 text-xs"
-                        style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                        value={newRulePrice}
-                        onChange={(e) => setNewRulePrice(Number(e.target.value))}
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs font-bold text-gray-600 mb-1 block">起始時間</label>
-                      <input
-                        type="time"
-                        required
-                        className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2 text-xs"
-                        style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                        value={newRuleStart}
-                        onChange={(e) => setNewRuleStart(e.target.value)}
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs font-bold text-gray-600 mb-1 block">結束時間</label>
-                      <input
-                        type="time"
-                        required
-                        className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-xs"
-                        style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                        value={newRuleEnd}
-                        onChange={(e) => setNewRuleEnd(e.target.value)}
-                      />
-                    </div>
-                    <button
-                      type="submit"
-                      className="col-span-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 rounded-lg text-xs shadow transition mt-1"
-                    >
-                      新增費率規則
-                    </button>
-                  </form>
-
-                  <div className="space-y-2 max-h-48 overflow-y-auto">
-                    {pricingRules.length === 0 ? (
-                      <p className="text-xs text-gray-400 text-center py-2">目前無費率規則設定</p>
-                    ) : (
-                      pricingRules.map((rule) => (
-                        <div key={rule.id} className="flex justify-between items-center bg-gray-50 p-2.5 rounded-xl border text-xs">
-                          <div>
-                            <span className={`px-1.5 py-0.5 rounded font-bold mr-2 text-[10px] ${rule.day_type === 'weekday' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'}`}>
-                              {rule.day_type === 'weekday' ? '平日' : '假日'}
-                            </span>
-                            <span className="font-bold text-gray-800">{rule.start_time?.slice(0, 5)} - {rule.end_time?.slice(0, 5)}</span>
-                            <span className="text-emerald-600 font-bold ml-3">${rule.price} / 半小時</span>
-                          </div>
-                          <button
-                            onClick={() => handleDeletePricingRule(rule.id)}
-                            className="text-red-500 hover:text-red-700 font-bold p-1"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
           </>
         )}
       </div>
 
       {/* ========================================================================= */}
-      {/* 🟢 代客登記 / 模態彈出視窗 */}
+      {/* 🟢 代客登記 彈出視窗 (維持原樣) */}
       {/* ========================================================================= */}
       {agentBookingSession && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 animate-in fade-in overflow-y-auto pt-10 pb-10">
           <div className="bg-white rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl animate-in zoom-in-95 my-auto">
             <div className="p-4 bg-blue-600 text-white flex justify-between items-center">
-              <h3 className="font-bold text-base flex items-center gap-2">
-                <UserPlus size={18} /> 代客登記臨打
-              </h3>
-              <button onClick={() => setAgentBookingSession(null)} className="text-white/80 hover:text-white">
-                <X size={20} />
-              </button>
+              <h3 className="font-bold text-base flex items-center gap-2"><UserPlus size={18} /> 代客登記臨打</h3>
+              <button onClick={() => setAgentBookingSession(null)} className="text-white/80 hover:text-white"><X size={20} /></button>
             </div>
-
             <form onSubmit={submitAgentBooking} className="p-5 space-y-3">
-              <p className="text-xs text-gray-500 font-bold">
-                目標場次：{agentBookingSession.title} ({agentBookingSession.session_date})
-              </p>
-
+              <p className="text-xs text-gray-500 font-bold">目標場次：{agentBookingSession.title} ({agentBookingSession.session_date})</p>
               <div>
                 <label className="text-xs font-bold text-gray-600 mb-1 block">球友姓名</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="例如: 王大明"
-                  className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                  value={agentName}
-                  onChange={(e) => setAgentName(e.target.value)}
-                />
+                <input type="text" required placeholder="例如: 王大明" className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500" style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }} value={agentName} onChange={(e) => setAgentName(e.target.value)} />
               </div>
-
               <div>
                 <label className="text-xs font-bold text-gray-600 mb-1 block">手機號碼</label>
-                <input
-                  type="tel"
-                  required
-                  placeholder="例如: 0912345678"
-                  pattern="[0-9]{10}"
-                  className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                  value={agentPhone}
-                  onChange={(e) => setAgentPhone(e.target.value)}
-                />
+                <input type="tel" required placeholder="例如: 0912345678" pattern="[0-9]{10}" className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500" style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }} value={agentPhone} onChange={(e) => setAgentPhone(e.target.value)} />
               </div>
-
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="text-xs font-bold text-gray-600 mb-1 block">排定狀態</label>
-                  <select
-                    className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2 text-sm"
-                    style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                    value={agentStatus}
-                    onChange={(e: any) => setAgentStatus(e.target.value)}
-                  >
+                  <select className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2 text-sm" style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }} value={agentStatus} onChange={(e: any) => setAgentStatus(e.target.value)}>
                     <option value="registered">正取</option>
                     <option value="waitlisted">候補</option>
                   </select>
                 </div>
                 <div>
                   <label className="text-xs font-bold text-gray-600 mb-1 block">收款狀態</label>
-                  <select
-                    className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2 text-sm"
-                    style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                    value={agentPaymentStatus}
-                    onChange={(e: any) => setAgentPaymentStatus(e.target.value)}
-                  >
+                  <select className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2 text-sm" style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }} value={agentPaymentStatus} onChange={(e: any) => setAgentPaymentStatus(e.target.value)}>
                     <option value="unpaid">待收款</option>
                     <option value="paid">已收款</option>
                   </select>
                 </div>
               </div>
-
               <div>
                 <label className="text-xs font-bold text-gray-600 mb-1 block">個人備註 (選填)</label>
+                <input type="text" placeholder="例如: LINE 預先約定、現金已收" className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500" style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }} value={agentNotes} onChange={(e) => setAgentNotes(e.target.value)} />
+              </div>
+              <div className="flex gap-2 pt-2">
+                <button type="button" onClick={() => setAgentBookingSession(null)} className="flex-1 bg-gray-100 text-gray-600 font-bold py-2.5 rounded-lg text-sm">取消</button>
+                <button type="submit" disabled={isAgentSubmitting} className="flex-1 bg-blue-600 text-white font-bold py-2.5 rounded-lg text-sm shadow disabled:opacity-50">{isAgentSubmitting ? "登記中..." : "確認登記"}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 🟢 館主退款確認 彈出視窗 */}
+      {/* ========================================================================= */}
+      {activeRefundPlayer && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 animate-in fade-in overflow-y-auto pt-10 pb-10">
+          <div className="bg-white rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl animate-in zoom-in-95 my-auto">
+            <div className="p-4 bg-amber-500 text-white flex justify-between items-center">
+              <h3 className="font-bold text-base flex items-center gap-2"><DollarSign size={18} /> 退款確認登錄</h3>
+              <button onClick={() => setActiveRefundPlayer(null)} className="text-white/80 hover:text-white"><X size={20} /></button>
+            </div>
+
+            <form onSubmit={handleProcessRefund} className="p-5 space-y-4">
+              <div className="bg-amber-50 border border-amber-200 p-3 rounded-lg text-xs text-amber-900 space-y-1">
+                <p>👤 報名人: <span className="font-bold">{activeRefundPlayer.display_name || '球友'}</span></p>
+                <p>🎫 報名編號: <span className="font-bold">{activeRefundPlayer.booking_no || activeRefundPlayer.id}</span></p>
+                <p>💳 已回報方式: <span className="font-bold">{activeRefundPlayer.payment_method || '未回報'}</span> {activeRefundPlayer.payment_account_last5 && activeRefundPlayer.payment_account_last5 !== 'NA' && `(末五碼: ${activeRefundPlayer.payment_account_last5})`}</p>
+                <p>💰 原應繳金額: <span className="font-bold">${activeRefundPlayer.session_price}</span></p>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-gray-600 mb-1 block">實際退款金額 (必填)</label>
                 <input
-                  type="text"
-                  placeholder="例如: LINE 預先約定、現金已收"
-                  className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  type="number"
+                  required
+                  min="0"
+                  placeholder="請輸入您實際退回的金額"
+                  className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-amber-500"
                   style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                  value={agentNotes}
-                  onChange={(e) => setAgentNotes(e.target.value)}
+                  value={refundAmount}
+                  onChange={(e) => setRefundAmount(e.target.value)}
                 />
               </div>
 
-              <div className="flex gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setAgentBookingSession(null)}
-                  className="flex-1 bg-gray-100 text-gray-600 font-bold py-2.5 rounded-lg text-sm"
+              <div>
+                <label className="text-xs font-bold text-gray-600 mb-1 block">實際退款方式 (必填)</label>
+                <select
+                  required
+                  className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-amber-500"
+                  style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
+                  value={refundMethod}
+                  onChange={(e) => setRefundMethod(e.target.value)}
                 >
-                  取消
-                </button>
-                <button
-                  type="submit"
-                  disabled={isAgentSubmitting}
-                  className="flex-1 bg-blue-600 text-white font-bold py-2.5 rounded-lg text-sm shadow disabled:opacity-50"
-                >
-                  {isAgentSubmitting ? "登記中..." : "確認登記"}
+                  <option value="">請選擇</option>
+                  <option value="LINE Pay 轉帳">LINE Pay 轉帳</option>
+                  <option value="銀行轉帳">銀行轉帳</option>
+                  <option value="街口支付">街口支付</option>
+                  <option value="現金退款">現金退款</option>
+                  <option value="不須退款">不須退款</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-gray-600 mb-1 block">實際退款時間 (必填)</label>
+                <input
+                  type="datetime-local"
+                  required
+                  className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-amber-500"
+                  style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
+                  value={refundTime}
+                  onChange={(e) => setRefundTime(e.target.value)}
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-gray-600 mb-1 block">退款交易備註 (選填)</label>
+                <input
+                  type="text"
+                  placeholder="可填寫交易序號或憑證編號，勿含完整帳號"
+                  className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-amber-500"
+                  style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
+                  value={refundNote}
+                  onChange={(e) => setRefundNote(e.target.value)}
+                />
+              </div>
+
+              <div className="bg-gray-50 border border-gray-200 p-3 rounded-lg flex items-start gap-2">
+                <input
+                  type="checkbox"
+                  id="refundCheck"
+                  className="mt-1 w-4 h-4 accent-amber-600 cursor-pointer"
+                  checked={refundConfirmCheck}
+                  onChange={(e) => setRefundConfirmCheck(e.target.checked)}
+                />
+                <label htmlFor="refundCheck" className="text-xs font-bold text-gray-700 leading-tight cursor-pointer">
+                  我已核對原款項入帳，並實際完成上述退款，願對此紀錄負責。
+                </label>
+              </div>
+
+              <div className="flex gap-2 pt-2 border-t border-gray-100">
+                <button type="button" onClick={() => setActiveRefundPlayer(null)} className="flex-1 bg-gray-100 text-gray-600 font-bold py-2.5 rounded-lg text-sm">取消</button>
+                <button type="submit" disabled={isSubmitting || !refundConfirmCheck} className="flex-1 bg-amber-600 text-white font-bold py-2.5 rounded-lg text-sm shadow disabled:opacity-50 disabled:bg-gray-400">
+                  {isSubmitting ? "登錄中..." : "確認並記錄已退款"}
                 </button>
               </div>
             </form>
           </div>
         </div>
       )}
+
     </main>
   );
 }
