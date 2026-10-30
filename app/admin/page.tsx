@@ -116,10 +116,8 @@ export default function AdminPage() {
   const [isFetchingHistory, setIsFetchingHistory] = useState(false);
   const [historyShowUnpaidOnly, setHistoryShowUnpaidOnly] = useState(false);
 
-  // 🌟 臨打待核帳快篩功能
   const [openPlayShowReportedOnly, setOpenPlayShowReportedOnly] = useState(false);
 
-  // 🌟 退款模態框 State
   const [activeRefundPlayer, setActiveRefundPlayer] = useState<any | null>(null);
   const [refundAmount, setRefundAmount] = useState<number | string>("");
   const [refundMethod, setRefundMethod] = useState("");
@@ -196,9 +194,8 @@ export default function AdminPage() {
 
       if (session || auth === "true") {
         setIsAuthenticated(true);
-      } else {
-        setLoading(false);
       }
+      setLoading(false);
     };
     init();
   }, []);
@@ -232,7 +229,6 @@ export default function AdminPage() {
 
   const fetchAllData = useCallback(async () => {
     if (!isAuthenticated) return;
-    setLoading(true);
 
     const limitDateStr = getFetchLimitDateStr();
 
@@ -293,7 +289,6 @@ export default function AdminPage() {
       .order("class_date", { ascending: false });
     if (classesData) setClassesList(classesData);
 
-    // 🌟 擴充臨打抓取的欄位 (包含所有退款與核帳欄位)
     const { data: openPlaysData } = await supabase
       .from("open_play_sessions")
       .select(`
@@ -309,102 +304,14 @@ export default function AdminPage() {
       .gte("session_date", limitDateStr)
       .order("session_date", { ascending: false });
     if (openPlaysData) setOpenPlaySessions(openPlaysData);
-
-    setLoading(false);
   }, [getFetchLimitDateStr, isAuthenticated]);
 
   useEffect(() => {
-    fetchAllData();
-  }, [activeTab, dateFilter, customStartDate, customEndDate, fetchAllData]);
-
-  const fetchHistoryData = async () => {
-    setIsFetchingHistory(true);
-    setHistoryResults([]);
-    try {
-      let fetchedCourts: any[] = [];
-      let fetchedClasses: any[] = [];
-      let fetchedOpenPlays: any[] = [];
-
-      if (historyType === 'all' || historyType === 'courts') {
-        const { data } = await supabase
-          .from("court_bookings")
-          .select(`*, users (name, phone), courts (name)`)
-          .gte("booking_date", historyStartDate)
-          .lte("booking_date", historyEndDate)
-          .order("booking_date", { ascending: false })
-          .order("court_id", { ascending: true })
-          .order("start_time", { ascending: true });
-
-        if (data) {
-          const groupedCourts = [];
-          let currentGroup: any = null;
-          for (const b of data) {
-            if (!currentGroup) {
-              currentGroup = { ...b, ids: [b.id], totalPrice: b.price || 250 };
-            } else {
-              const isContiguous = currentGroup.booking_date === b.booking_date && currentGroup.court_id === b.court_id && currentGroup.user_id === b.user_id && currentGroup.status === b.status && currentGroup.end_time === b.start_time;
-              if (isContiguous) {
-                currentGroup.end_time = b.end_time;
-                currentGroup.ids.push(b.id);
-                currentGroup.totalPrice += (b.price || 250);
-              } else {
-                groupedCourts.push(currentGroup);
-                currentGroup = { ...b, ids: [b.id], totalPrice: b.price || 250 };
-              }
-            }
-          }
-          if (currentGroup) groupedCourts.push(currentGroup);
-          fetchedCourts = groupedCourts.map(item => ({ ...item, _itemType: 'courts', sortDate: item.booking_date, sortTime: item.start_time }));
-        }
-      }
-
-      if (historyType === 'all' || historyType === 'open_plays') {
-        // 🌟 歷史查詢也要補齊擴充欄位
-        const { data } = await supabase
-          .from("open_play_sessions")
-          .select(`
-            *, courts(name), 
-            open_play_players (
-              id, status, created_at, player_notes, payment_method, payment_status, is_checked_in,
-              booking_no, line_nickname, display_name, payment_deadline, payment_report_time, 
-              payment_account_last5, admin_confirm_time, admin_confirmer, 
-              refund_status, refund_amount, refund_method, refund_time, refund_note, 
-              users (name, phone)
-            )
-          `)
-          .gte("session_date", historyStartDate)
-          .lte("session_date", historyEndDate);
-        if (data) {
-          fetchedOpenPlays = data.map(item => ({ ...item, _itemType: 'open_plays', sortDate: item.session_date, sortTime: item.start_time }));
-        }
-      }
-
-      if (historyType === 'all' || historyType === 'classes') {
-        const { data } = await supabase
-          .from("classes")
-          .select(`*, courts(name), class_bookings (id, status, payment_status, payment_method, notes, need_paddle, users (name, phone))`)
-          .gte("class_date", historyStartDate)
-          .lte("class_date", historyEndDate);
-        if (data) {
-          fetchedClasses = data.map(item => ({ ...item, _itemType: 'classes', sortDate: item.class_date, sortTime: item.start_time }));
-        }
-      }
-
-      const combined = [...fetchedCourts, ...fetchedClasses, ...fetchedOpenPlays];
-      combined.sort((a, b) => {
-        const dateA = a.sortDate + ' ' + (a.sortTime || '00:00');
-        const dateB = b.sortDate + ' ' + (b.sortTime || '00:00');
-        return dateA > dateB ? -1 : 1;
-      });
-      setHistoryResults(combined);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setIsFetchingHistory(false);
+    if (isAuthenticated) {
+      fetchAllData();
     }
-  };
+  }, [activeTab, dateFilter, customStartDate, customEndDate, fetchAllData, isAuthenticated]);
 
-  // 🌟 臨打：館主確認收款
   const handleAdminConfirmPayment = async (playerId: number) => {
     setIsSubmitting(true);
     try {
@@ -426,7 +333,6 @@ export default function AdminPage() {
     }
   };
 
-  // 🌟 臨打：撤銷收款確認
   const handleAdminRevokePayment = async (playerId: number) => {
     if (!confirm("確定要取消這筆收款確認，退回「待核帳」狀態嗎？")) return;
     setIsSubmitting(true);
@@ -449,7 +355,6 @@ export default function AdminPage() {
     }
   };
 
-  // 🌟 臨打：執行退款登錄
   const handleProcessRefund = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!refundConfirmCheck) return alert("請勾選「我已核對原款項入帳，並實際完成上述退款」！");
@@ -586,7 +491,7 @@ export default function AdminPage() {
     e.preventDefault();
     setLoading(true);
 
-    const { data, error } = await supabase.auth.signInWithPassword({
+    const { error } = await supabase.auth.signInWithPassword({
       email: inputUsername.trim(),
       password: inputPassword.trim(),
     });
@@ -744,7 +649,6 @@ export default function AdminPage() {
         session.open_play_players?.forEach((p: any) => {
           if (p.status === 'registered') {
             totalEstimated += price; openPlayRev += price;
-            // 🌟 營收計算調整：將 confirmed 視同 paid，其餘視同未付款
             if (p.payment_status === 'paid' || p.payment_status === 'confirmed') totalCollected += price;
             else { totalPending += price; openPlayPendingCount += 1; }
           }
@@ -784,7 +688,6 @@ export default function AdminPage() {
     if (activeTab === 'history') fetchHistoryData();
   };
 
-  // 保留供手動登記者直接切換狀態用 (僅限 unpaid/paid 之間)
   const handleToggleOpenPlayPayment = async (playerId: string, currentStatus: string) => {
     const nextStatus = currentStatus === 'paid' ? 'unpaid' : 'paid';
     await supabase.from("open_play_players").update({ payment_status: nextStatus }).eq("id", playerId);
@@ -1014,7 +917,6 @@ export default function AdminPage() {
     if (regCount >= session.max_players) return alert("⚠️ 正取名額已滿！\n請先將某位正取球友「取消」，才能手動將候補轉為正取。");
     if (!confirm("確定要將這位候補玩家轉為「正取」嗎？\n轉為正取後系統將開始計算 10 分鐘付款倒數！")) return;
 
-    // 將狀態改為正取，並賦予新的 payment_deadline
     const { error } = await supabase.from("open_play_players").update({
       status: "registered",
       payment_status: "pending",
@@ -1036,7 +938,6 @@ export default function AdminPage() {
     if (targetPlayer && targetPlayer.status === 'registered') {
       const { data: nextWaitlisted } = await supabase.from("open_play_players").select("id").eq("session_id", targetPlayer.session_id).eq("status", "waitlisted").order("created_at", { ascending: true }).limit(1).maybeSingle();
       if (nextWaitlisted) {
-        // 遞補者轉正，並賦予期限
         await supabase.from("open_play_players").update({
           status: "registered",
           payment_status: "pending",
@@ -1133,7 +1034,6 @@ export default function AdminPage() {
       </header>
 
       <div className="p-5 space-y-4">
-        {/* 導覽列：兩排固定順序 */}
         <div className="grid grid-cols-3 gap-1.5 bg-gray-200 p-1.5 rounded-xl">
           <button onClick={() => setActiveTab('dashboard')} className={`py-2 text-xs font-bold rounded-lg transition-all ${activeTab === 'dashboard' ? 'shadow-sm bg-white text-gray-900' : 'opacity-60 text-gray-600'}`}>📊 營收</button>
           <button onClick={() => setActiveTab('history')} className={`py-2 text-xs font-bold rounded-lg transition-all ${activeTab === 'history' ? 'shadow-sm bg-white text-indigo-600' : 'opacity-60 text-gray-600'}`}>📜 歷史</button>
@@ -1151,9 +1051,6 @@ export default function AdminPage() {
           </div>
         ) : (
           <>
-            {/* ========================================================================= */}
-            {/* 📜 歷史紀錄調閱分頁 */}
-            {/* ========================================================================= */}
             {activeTab === 'history' && (
               <div className="space-y-4 animate-in fade-in pb-10">
                 <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-200 space-y-3">
@@ -1209,7 +1106,6 @@ export default function AdminPage() {
                       if (!historyShowUnpaidOnly) return true;
                       if (item._itemType === 'courts') return item.payment_status === 'unpaid';
                       const bookings = item._itemType === 'classes' ? item.class_bookings : item.open_play_players;
-                      // 🌟 修正歷史查詢條件：只要是 reported 或 pending (含待收款意義)，都視為 unpaid 展示
                       return bookings?.some((b: any) => b.status !== 'cancelled' && (b.payment_status === 'unpaid' || b.payment_status === 'reported' || b.payment_status === 'pending'));
                     }).map((item) => {
 
@@ -1357,9 +1253,6 @@ export default function AdminPage() {
               </div>
             )}
 
-            {/* ========================================================================= */}
-            {/* 📊 營收分頁 */}
-            {/* ========================================================================= */}
             {activeTab === 'dashboard' && (
               <div className="space-y-4 animate-in fade-in">
                 <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm space-y-3">
@@ -1549,9 +1442,6 @@ export default function AdminPage() {
               </div>
             )}
 
-            {/* ========================================================================= */}
-            {/* 🎾 場地租借分頁 (維持原樣) */}
-            {/* ========================================================================= */}
             {activeTab === 'courts' && (
               <div className="space-y-4">
                 <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm space-y-2">
@@ -1615,9 +1505,6 @@ export default function AdminPage() {
               </div>
             )}
 
-            {/* ========================================================================= */}
-            {/* 🎓 體驗課程分頁 (維持原樣) */}
-            {/* ========================================================================= */}
             {activeTab === 'classes' && (
               <div className="space-y-4">
                 {showClassVisualSchedule ? (
@@ -1789,12 +1676,8 @@ export default function AdminPage() {
               </div>
             )}
 
-            {/* ========================================================================= */}
-            {/* 👥 臨打活動分頁 (全新升級版) */}
-            {/* ========================================================================= */}
             {activeTab === 'open_plays' && (
               <div className="space-y-4 pb-10">
-
                 <div className="flex justify-between items-center bg-blue-50 p-2 rounded-lg border border-blue-200 shadow-sm">
                   <label className="flex items-center gap-2 text-xs font-bold text-blue-800 cursor-pointer">
                     <input
@@ -1904,10 +1787,8 @@ export default function AdminPage() {
                 ) : (
                   openPlaySessions.filter(session => {
                     if (!openPlayShowReportedOnly) return true;
-                    // 如果勾選待核帳過濾，只顯示該場次中有任何人是 reported, pending 或 unpaid 的
                     return session.open_play_players?.some((p: any) => p.status !== 'cancelled' && (p.payment_status === 'reported' || p.payment_status === 'pending' || p.payment_status === 'unpaid'));
                   }).map((session) => {
-                    // 🌟 重新排序：正取 -> 候補 -> 取消
                     const allPlayers = [...(session.open_play_players || [])].sort((a: any, b: any) => {
                       const rank: Record<string, number> = { registered: 1, waitlisted: 2, cancelled: 3 };
                       if (rank[a.status] !== rank[b.status]) return rank[a.status] - rank[b.status];
@@ -2063,9 +1944,7 @@ export default function AdminPage() {
 
                                   {player.player_notes && <p className="text-xs text-gray-500 mt-1">💬 備註：{player.player_notes}</p>}
 
-                                  {/* 🌟 臨打核帳與操作按鈕群 */}
                                   <div className="flex items-center gap-2 w-full justify-end pt-2 border-t border-gray-200 mt-1">
-
                                     {player.payment_status === 'reported' && player.status === 'registered' && (
                                       <button onClick={() => handleAdminConfirmPayment(player.id)} className="text-xs font-bold px-3 py-1.5 rounded-lg bg-emerald-600 text-white shadow-sm hover:bg-emerald-700 transition flex items-center gap-1">
                                         <CheckCircle2 size={14} /> 確認收款
@@ -2111,9 +1990,6 @@ export default function AdminPage() {
         )}
       </div>
 
-      {/* ========================================================================= */}
-      {/* 🟢 代客登記 彈出視窗 (維持原樣) */}
-      {/* ========================================================================= */}
       {agentBookingSession && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 animate-in fade-in overflow-y-auto pt-10 pb-10">
           <div className="bg-white rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl animate-in zoom-in-95 my-auto">
@@ -2160,9 +2036,6 @@ export default function AdminPage() {
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* 🟢 館主退款確認 彈出視窗 */}
-      {/* ========================================================================= */}
       {activeRefundPlayer && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 animate-in fade-in overflow-y-auto pt-10 pb-10">
           <div className="bg-white rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl animate-in zoom-in-95 my-auto">
@@ -2181,27 +2054,12 @@ export default function AdminPage() {
 
               <div>
                 <label className="text-xs font-bold text-gray-600 mb-1 block">實際退款金額 (必填)</label>
-                <input
-                  type="number"
-                  required
-                  min="0"
-                  placeholder="請輸入您實際退回的金額"
-                  className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-amber-500"
-                  style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                  value={refundAmount}
-                  onChange={(e) => setRefundAmount(e.target.value)}
-                />
+                <input type="number" required min="0" placeholder="請輸入您實際退回的金額" className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-amber-500" style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }} value={refundAmount} onChange={(e) => setRefundAmount(e.target.value)} />
               </div>
 
               <div>
                 <label className="text-xs font-bold text-gray-600 mb-1 block">實際退款方式 (必填)</label>
-                <select
-                  required
-                  className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-amber-500"
-                  style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                  value={refundMethod}
-                  onChange={(e) => setRefundMethod(e.target.value)}
-                >
+                <select required className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-amber-500" style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }} value={refundMethod} onChange={(e) => setRefundMethod(e.target.value)}>
                   <option value="">請選擇</option>
                   <option value="LINE Pay 轉帳">LINE Pay 轉帳</option>
                   <option value="銀行轉帳">銀行轉帳</option>
@@ -2213,36 +2071,16 @@ export default function AdminPage() {
 
               <div>
                 <label className="text-xs font-bold text-gray-600 mb-1 block">實際退款時間 (必填)</label>
-                <input
-                  type="datetime-local"
-                  required
-                  className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-amber-500"
-                  style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                  value={refundTime}
-                  onChange={(e) => setRefundTime(e.target.value)}
-                />
+                <input type="datetime-local" required className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-amber-500" style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }} value={refundTime} onChange={(e) => setRefundTime(e.target.value)} />
               </div>
 
               <div>
                 <label className="text-xs font-bold text-gray-600 mb-1 block">退款交易備註 (選填)</label>
-                <input
-                  type="text"
-                  placeholder="可填寫交易序號或憑證編號，勿含完整帳號"
-                  className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-amber-500"
-                  style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                  value={refundNote}
-                  onChange={(e) => setRefundNote(e.target.value)}
-                />
+                <input type="text" placeholder="可填寫交易序號或憑證編號" className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-amber-500" style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }} value={refundNote} onChange={(e) => setRefundNote(e.target.value)} />
               </div>
 
               <div className="bg-gray-50 border border-gray-200 p-3 rounded-lg flex items-start gap-2">
-                <input
-                  type="checkbox"
-                  id="refundCheck"
-                  className="mt-1 w-4 h-4 accent-amber-600 cursor-pointer"
-                  checked={refundConfirmCheck}
-                  onChange={(e) => setRefundConfirmCheck(e.target.checked)}
-                />
+                <input type="checkbox" id="refundCheck" className="mt-1 w-4 h-4 accent-amber-600 cursor-pointer" checked={refundConfirmCheck} onChange={(e) => setRefundConfirmCheck(e.target.checked)} />
                 <label htmlFor="refundCheck" className="text-xs font-bold text-gray-700 leading-tight cursor-pointer">
                   我已核對原款項入帳，並實際完成上述退款，願對此紀錄負責。
                 </label>
