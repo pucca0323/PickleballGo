@@ -525,7 +525,6 @@ export default function AdminPage() {
       { key: "announcement_active", value: tempAnnouncementActive ? "true" : "false", updated_at: new Date().toISOString() },
       { key: "announcement_text", value: tempAnnouncementText.trim(), updated_at: new Date().toISOString() },
       { key: "cancel_limit_hours", value: tempCancelLimitHours.trim(), updated_at: new Date().toISOString() },
-
       { key: "payment_line", value: tempPaymentLine.trim(), updated_at: new Date().toISOString() },
       { key: "payment_jko", value: tempPaymentJko.trim(), updated_at: new Date().toISOString() },
       { key: "payment_twqr", value: tempPaymentTwqr.trim(), updated_at: new Date().toISOString() },
@@ -1051,6 +1050,312 @@ export default function AdminPage() {
           </div>
         ) : (
           <>
+            {/* ========================================================================= */}
+            {/* ⚙️ 設定分頁 (已補回) */}
+            {/* ========================================================================= */}
+            {activeTab === 'settings' && (
+              <div className="space-y-4 animate-in fade-in pb-10">
+                <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200 space-y-4">
+                  <h3 className="font-bold text-gray-800 text-base border-b pb-2 flex items-center gap-2">
+                    <Settings size={18} className="text-purple-600" /> 場館與後台帳號設定
+                  </h3>
+
+                  <form onSubmit={handleSaveSettings} className="space-y-4">
+                    <div>
+                      <label className="text-xs font-bold text-gray-600 mb-1 block">場館名稱</label>
+                      <input
+                        type="text"
+                        required
+                        className="w-full bg-white text-gray-900 border border-gray-300 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                        style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
+                        value={tempVenueName}
+                        onChange={(e) => setTempVenueName(e.target.value)}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-bold text-gray-600 mb-1 block">官方 LINE 連結 (球友付款回報用)</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="https://lin.ee/..."
+                        className="w-full bg-white text-gray-900 border border-gray-300 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                        style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
+                        value={tempLineUrl}
+                        onChange={(e) => setTempLineUrl(e.target.value)}
+                      />
+                    </div>
+
+                    <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl space-y-3 mt-4">
+                      <h4 className="font-bold text-blue-800 text-sm flex items-center gap-2">
+                        <CreditCard size={16} /> 線上收款連結與帳戶設定
+                      </h4>
+                      <p className="text-[11px] text-gray-500">
+                        這些資訊將在球友前台預約結帳時顯示，提供更直覺的點擊付款體驗。
+                      </p>
+
+                      <div>
+                        <label className="text-xs font-bold text-gray-600 mb-1 block">LINE Pay 轉帳連結</label>
+                        <input
+                          type="text"
+                          placeholder="例如: https://line.me/R/pay/..."
+                          className="w-full bg-white text-gray-900 border border-gray-300 rounded-xl p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
+                          value={tempPaymentLine}
+                          onChange={(e) => setTempPaymentLine(e.target.value)}
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-bold text-gray-600 mb-1 block">街口支付 轉帳連結</label>
+                        <input
+                          type="text"
+                          placeholder="例如: https://www.jkopay.com/..."
+                          className="w-full bg-white text-gray-900 border border-gray-300 rounded-xl p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
+                          value={tempPaymentJko}
+                          onChange={(e) => setTempPaymentJko(e.target.value)}
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-bold text-gray-600 mb-1 block">台灣 Pay (TWQR) 連結</label>
+                        <input
+                          type="text"
+                          placeholder="請輸入 TWQR 付款網址..."
+                          className="w-full bg-white text-gray-900 border border-gray-300 rounded-xl p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
+                          value={tempPaymentTwqr}
+                          onChange={(e) => setTempPaymentTwqr(e.target.value)}
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-bold text-gray-600 mb-1 block">銀行匯款帳號</label>
+                        <textarea
+                          rows={2}
+                          placeholder="例如：中國信託(822) 12345678901234"
+                          className="w-full bg-white text-gray-900 border border-gray-300 rounded-xl p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                          style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
+                          value={tempPaymentBank}
+                          onChange={(e) => setTempPaymentBank(e.target.value)}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl space-y-3 mt-4">
+                      <h4 className="font-bold text-amber-800 text-sm flex items-center gap-2">
+                        <AlertCircle size={16} /> 首頁緊急公告設定
+                      </h4>
+
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          id="announceToggle"
+                          className="w-4 h-4 accent-amber-600 rounded"
+                          checked={tempAnnouncementActive}
+                          onChange={(e) => setTempAnnouncementActive(e.target.checked)}
+                        />
+                        <label htmlFor="announceToggle" className="text-sm font-bold text-gray-700 cursor-pointer">
+                          啟用首頁公告橫幅
+                        </label>
+                      </div>
+
+                      {tempAnnouncementActive && (
+                        <textarea
+                          rows={2}
+                          placeholder="請輸入公告內容，例如：今日因颱風休館一天。"
+                          className="w-full bg-white text-gray-900 border border-gray-300 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 resize-none"
+                          style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
+                          value={tempAnnouncementText}
+                          onChange={(e) => setTempAnnouncementText(e.target.value)}
+                        />
+                      )}
+                    </div>
+
+                    <div className="p-4 bg-gray-50 border border-gray-200 rounded-xl space-y-3 mt-4">
+                      <h4 className="font-bold text-gray-800 text-sm flex items-center gap-2">
+                        <Clock size={16} className="text-gray-600" /> 取消預約規則設定
+                      </h4>
+                      <div>
+                        <label className="text-xs font-bold text-gray-600 mb-1 block">開打前幾小時禁止取消預約？</label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            min="0"
+                            className="w-24 bg-white text-gray-900 border border-gray-300 rounded-xl p-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                            style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
+                            value={tempCancelLimitHours}
+                            onChange={(e) => setTempCancelLimitHours(e.target.value)}
+                          />
+                          <span className="text-sm text-gray-600 font-bold">小時</span>
+                        </div>
+                        <p className="text-[11px] text-gray-400 mt-1">
+                          設定為 0 表示不限制；設定為 3 表示開打前 3 小時內，球友前台將無法點擊取消按鈕。
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      type="submit"
+                      className="w-full bg-purple-600 text-white font-bold py-3 rounded-xl shadow-md hover:bg-purple-700 transition active:scale-95 text-sm mt-4"
+                    >
+                      儲存基本設定變更
+                    </button>
+                  </form>
+                </div>
+
+                <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200 space-y-4">
+                  <h3 className="font-bold text-gray-800 text-base border-b pb-2 flex items-center gap-2">
+                    <CalendarPlus size={18} className="text-amber-600" /> 國定假日 / 特殊日管理
+                  </h3>
+                  <p className="text-xs text-gray-500">
+                    設定在此清單中的日期，系統將自動強制以「假日費率」計算，解決平日遇到國定假日的計費問題。
+                  </p>
+
+                  <form onSubmit={handleAddSpecialDate} className="flex gap-2 items-end">
+                    <div className="flex-1">
+                      <label className="text-xs font-bold text-gray-600 mb-1 block">選擇日期</label>
+                      <input
+                        type="date"
+                        required
+                        className="w-full bg-white text-gray-900 border border-gray-300 rounded-xl p-2.5 text-sm"
+                        style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
+                        value={newSpecialDate}
+                        onChange={(e) => setNewSpecialDate(e.target.value)}
+                      />
+                    </div>
+                    <div className="flex-1">
+                      <label className="text-xs font-bold text-gray-600 mb-1 block">說明 (選填)</label>
+                      <input
+                        type="text"
+                        placeholder="例如: 國慶日"
+                        className="w-full bg-white text-gray-900 border border-gray-300 rounded-xl p-2.5 text-sm"
+                        style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
+                        value={newSpecialDesc}
+                        onChange={(e) => setNewSpecialDesc(e.target.value)}
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      className="bg-amber-600 hover:bg-amber-700 text-white font-bold px-4 py-2.5 rounded-xl text-sm shadow transition shrink-0"
+                    >
+                      新增
+                    </button>
+                  </form>
+
+                  <div className="space-y-2 pt-2 max-h-48 overflow-y-auto">
+                    {specialDates.length === 0 ? (
+                      <p className="text-xs text-gray-400 text-center py-2">目前無特殊日設定</p>
+                    ) : (
+                      specialDates.map((spec) => (
+                        <div key={spec.date} className="flex justify-between items-center bg-gray-50 p-2.5 rounded-xl border text-xs">
+                          <div>
+                            <span className="font-bold text-gray-800">{spec.date}</span>
+                            <span className="text-gray-500 ml-2">({spec.description || '國定假日'})</span>
+                          </div>
+                          <button
+                            onClick={() => handleDeleteSpecialDate(spec.date)}
+                            className="text-red-500 hover:text-red-700 font-bold p-1"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200 space-y-4">
+                  <h3 className="font-bold text-gray-800 text-base border-b pb-2 flex items-center gap-2">
+                    <DollarSign size={18} className="text-emerald-600" /> 動態費率時段規則設定
+                  </h3>
+                  <p className="text-xs text-gray-500">
+                    設定平日與假日不同時段的每半小時單價。
+                  </p>
+
+                  <form onSubmit={handleAddPricingRule} className="grid grid-cols-2 gap-2 bg-gray-50 p-3 rounded-xl border">
+                    <div>
+                      <label className="text-xs font-bold text-gray-600 mb-1 block">適用日型</label>
+                      <select
+                        className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2 text-xs"
+                        style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
+                        value={newRuleDayType}
+                        onChange={(e) => setNewRuleDayType(e.target.value)}
+                      >
+                        <option value="weekday">平日 (Weekday)</option>
+                        <option value="weekend">假日 (Weekend)</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold text-gray-600 mb-1 block">每半小時價格 (元)</label>
+                      <input
+                        type="number"
+                        required
+                        min="0"
+                        className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2 text-xs"
+                        style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
+                        value={newRulePrice}
+                        onChange={(e) => setNewRulePrice(Number(e.target.value))}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold text-gray-600 mb-1 block">起始時間</label>
+                      <input
+                        type="time"
+                        required
+                        className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2 text-xs"
+                        style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
+                        value={newRuleStart}
+                        onChange={(e) => setNewRuleStart(e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold text-gray-600 mb-1 block">結束時間</label>
+                      <input
+                        type="time"
+                        required
+                        className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-xs"
+                        style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
+                        value={newRuleEnd}
+                        onChange={(e) => setNewRuleEnd(e.target.value)}
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      className="col-span-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 rounded-lg text-xs shadow transition mt-1"
+                    >
+                      新增費率規則
+                    </button>
+                  </form>
+
+                  <div className="space-y-2 max-h-48 overflow-y-auto">
+                    {pricingRules.length === 0 ? (
+                      <p className="text-xs text-gray-400 text-center py-2">目前無費率規則設定</p>
+                    ) : (
+                      pricingRules.map((rule) => (
+                        <div key={rule.id} className="flex justify-between items-center bg-gray-50 p-2.5 rounded-xl border text-xs">
+                          <div>
+                            <span className={`px-1.5 py-0.5 rounded font-bold mr-2 text-[10px] ${rule.day_type === 'weekday' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'}`}>
+                              {rule.day_type === 'weekday' ? '平日' : '假日'}
+                            </span>
+                            <span className="font-bold text-gray-800">{rule.start_time?.slice(0, 5)} - {rule.end_time?.slice(0, 5)}</span>
+                            <span className="text-emerald-600 font-bold ml-3">${rule.price} / 半小時</span>
+                          </div>
+                          <button
+                            onClick={() => handleDeletePricingRule(rule.id)}
+                            className="text-red-500 hover:text-red-700 font-bold p-1"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
             {activeTab === 'history' && (
               <div className="space-y-4 animate-in fade-in pb-10">
                 <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-200 space-y-3">
