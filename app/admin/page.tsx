@@ -404,7 +404,7 @@ export default function AdminPage() {
     }
   };
 
-  const handleAdminConfirmPayment = async (playerId: number) => {
+  const handleAdminConfirmPayment = async (playerId: string) => {
     setIsSubmitting(true);
     try {
       const admin = await getAdminIdentity();
@@ -425,7 +425,7 @@ export default function AdminPage() {
     }
   };
 
-  const handleAdminRevokePayment = async (playerId: number) => {
+  const handleAdminRevokePayment = async (playerId: string) => {
     if (!confirm("確定要取消這筆收款確認，退回「待核帳」狀態嗎？")) return;
     setIsSubmitting(true);
     try {
@@ -1021,25 +1021,11 @@ export default function AdminPage() {
   };
 
   const handleCancelOpenPlayPlayer = async (playerId: string) => {
-    if (!confirm("確定要取消這位玩家嗎？\n(若取消正取，系統將釋出名額並遞補第一順位候補)")) return;
-    const { data: targetPlayer } = await supabase.from("open_play_players").select("session_id, status").eq("id", playerId).single();
+    if (!confirm("確定要取消這位玩家嗎？\n(注意：取消後系統「不會」自動遞補候補，空出的名額需由您手動發放)")) return;
     const { error } = await supabase.from("open_play_players").update({ status: "cancelled" }).eq("id", playerId);
     if (error) { alert("取消失敗：" + error.message); return; }
 
-    if (targetPlayer && targetPlayer.status === 'registered') {
-      const { data: nextWaitlisted } = await supabase.from("open_play_players").select("id").eq("session_id", targetPlayer.session_id).eq("status", "waitlisted").order("created_at", { ascending: true }).limit(1).maybeSingle();
-      if (nextWaitlisted) {
-        await supabase.from("open_play_players").update({
-          status: "registered",
-          payment_status: "pending",
-          payment_method: "online",
-          payment_deadline: new Date(Date.now() + 10 * 60000).toISOString(),
-          created_at: new Date().toISOString()
-        }).eq("id", nextWaitlisted.id);
-        alert("✅ 玩家已取消！系統已自動將第一順位候補球友遞補為正取，並開始倒數。");
-      } else alert("✅ 玩家已取消！目前無人候補，名額已釋出至前台。");
-    } else alert("✅ 候補玩家已成功取消。");
-
+    alert("✅ 玩家已成功取消！名額已釋出，候補名單維持不變（需手動轉正）。");
     fetchAllData();
   };
 
@@ -2315,7 +2301,7 @@ export default function AdminPage() {
                                         <div className="col-span-2 border-t border-gray-50 pt-1.5 mt-0.5 flex justify-between items-center text-[10px] text-gray-500">
                                           <span>
                                             💳 {player.payment_method === 'online' ? '線上' : '現場'}
-                                            {player.payment_account_last5 && player.payment_account_last5 !== 'NA' && ` (末五碼: ${player.payment_account_last5})`}
+                                            {player.payment_account_last5 && player.payment_account_last5 !== 'NA' && ` (末五碼/識別碼: ${player.payment_account_last5})`}
                                           </span>
                                           {player.payment_report_time && <span>回報: {new Date(player.payment_report_time).toLocaleString('zh-TW')}</span>}
                                         </div>
@@ -2442,7 +2428,7 @@ export default function AdminPage() {
               <div className="bg-amber-50 border border-amber-200 p-3 rounded-lg text-xs text-amber-900 space-y-1">
                 <p>👤 報名人: <span className="font-bold">{activeRefundPlayer.display_name || '球友'}</span></p>
                 <p>🎫 報名編號: <span className="font-bold">{activeRefundPlayer.booking_no || activeRefundPlayer.id}</span></p>
-                <p>💳 已回報方式: <span className="font-bold">{activeRefundPlayer.payment_method || '未回報'}</span> {activeRefundPlayer.payment_account_last5 && activeRefundPlayer.payment_account_last5 !== 'NA' && `(末五碼: ${activeRefundPlayer.payment_account_last5})`}</p>
+                <p>💳 已回報方式: <span className="font-bold">{activeRefundPlayer.payment_method || '未回報'}</span> {activeRefundPlayer.payment_account_last5 && activeRefundPlayer.payment_account_last5 !== 'NA' && `(末五碼/識別碼: ${activeRefundPlayer.payment_account_last5})`}</p>
                 <p>💰 原應繳金額: <span className="font-bold">${activeRefundPlayer.session_price}</span></p>
               </div>
 
