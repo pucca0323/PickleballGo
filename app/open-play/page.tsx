@@ -24,7 +24,7 @@ export default function OpenPlayPage() {
 
   // 🌟 付款相關狀態
   const [selectedPayment, setSelectedPayment] = useState<string>(''); // 'line', 'jko', 'twqr', 'bank'
-  const [last5, setLast5] = useState("");
+  const [last5, setLast5] = useState(""); // 銀行帳號末五碼或 LINE Pay 付款識別碼 / 交易序號
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
 
   const [paymentSettings, setPaymentSettings] = useState({
@@ -129,7 +129,7 @@ export default function OpenPlayPage() {
   // 🌟 提交報名
   const handleBooking = async (e: React.FormEvent, session: any) => {
     e.preventDefault();
-    if (!phone.trim() || !lineNickname.trim()) return alert("請填寫手機與 LINE 暱稱！");
+    if (!phone.trim() || !lineNickname.trim()) return alert("請填寫 LINE 暱稱與手機號碼！");
     setIsSubmitting(true);
 
     const finalDisplayName = displayName.trim() || "球友";
@@ -176,10 +176,21 @@ export default function OpenPlayPage() {
     }
   };
 
+  // 切換付款方式時清空識別資料，避免將上一種付款方式的內容送出
+  const handleSelectPayment = (method: string) => {
+    if (method !== selectedPayment) setLast5("");
+    setSelectedPayment(method);
+  };
+
   // 🌟 送出付款回報
   const handleReportPayment = async () => {
     if (!selectedPayment) return alert("請先選擇付款方式！");
-    if (selectedPayment === 'bank' && !last5.trim()) return alert("請填寫轉出帳號末五碼！");
+    if (selectedPayment === 'bank' && !/^[0-9]{5}$/.test(last5.trim())) {
+      return alert("請填寫轉出帳號末五碼（5 位數字）！");
+    }
+    if (selectedPayment === 'line' && !last5.trim()) {
+      return alert("請填寫 LINE Pay 付款識別碼 / 交易序號！");
+    }
 
     setIsSubmitting(true);
     try {
@@ -188,7 +199,7 @@ export default function OpenPlayPage() {
         p_phone: phone.trim(),
         p_method: selectedPayment,
         p_line_nickname: lineNickname.trim(),
-        p_last5: selectedPayment === 'bank' ? last5.trim() : 'NA',
+        p_last5: (selectedPayment === 'bank' || selectedPayment === 'line') ? last5.trim() : 'NA',
         p_display_name: displayName.trim() || "球友"
       });
 
@@ -336,6 +347,17 @@ export default function OpenPlayPage() {
                     <form onSubmit={(e) => handleBooking(e, session)} className="space-y-3">
                       <div>
                         <input
+                          type="text"
+                          required
+                          placeholder="您的 LINE 暱稱 (必填，供館方核帳用)"
+                          className="w-full min-w-0 bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm max-sm:text-base focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
+                          value={lineNickname}
+                          onChange={(e) => setLineNickname(e.target.value)}
+                        />
+                      </div>
+                      <div>
+                        <input
                           type="tel"
                           required
                           placeholder="手機號碼 (必填)"
@@ -344,17 +366,6 @@ export default function OpenPlayPage() {
                           style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
                           value={phone}
                           onChange={(e) => setPhone(e.target.value)}
-                        />
-                      </div>
-                      <div>
-                        <input
-                          type="text"
-                          required
-                          placeholder="您的 LINE 暱稱 (必填，供館方核帳用)"
-                          className="w-full min-w-0 bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm max-sm:text-base focus:outline-none focus:ring-1 focus:ring-blue-500"
-                          style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                          value={lineNickname}
-                          onChange={(e) => setLineNickname(e.target.value)}
                         />
                       </div>
                       <div>
@@ -463,22 +474,22 @@ export default function OpenPlayPage() {
                       <h3 className="font-bold text-gray-800 text-sm">1. 請選擇付款方式</h3>
                       <div className="grid grid-cols-2 gap-2">
                         {paymentSettings.line && (
-                          <button onClick={() => setSelectedPayment('line')} className={`py-3 rounded-xl font-bold text-sm border-2 transition ${selectedPayment === 'line' ? 'border-[#06C755] bg-[#06C755]/10 text-[#06C755]' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+                          <button onClick={() => handleSelectPayment('line')} className={`py-3 rounded-xl font-bold text-sm border-2 transition ${selectedPayment === 'line' ? 'border-[#06C755] bg-[#06C755]/10 text-[#06C755]' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
                             LINE Pay
                           </button>
                         )}
                         {paymentSettings.jko && (
-                          <button onClick={() => setSelectedPayment('jko')} className={`py-3 rounded-xl font-bold text-sm border-2 transition ${selectedPayment === 'jko' ? 'border-[#E60012] bg-[#E60012]/10 text-[#E60012]' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+                          <button onClick={() => handleSelectPayment('jko')} className={`py-3 rounded-xl font-bold text-sm border-2 transition ${selectedPayment === 'jko' ? 'border-[#E60012] bg-[#E60012]/10 text-[#E60012]' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
                             街口支付
                           </button>
                         )}
                         {paymentSettings.twqr && (
-                          <button onClick={() => setSelectedPayment('twqr')} className={`py-3 rounded-xl font-bold text-sm border-2 transition ${selectedPayment === 'twqr' ? 'border-[#005598] bg-[#005598]/10 text-[#005598]' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+                          <button onClick={() => handleSelectPayment('twqr')} className={`py-3 rounded-xl font-bold text-sm border-2 transition ${selectedPayment === 'twqr' ? 'border-[#005598] bg-[#005598]/10 text-[#005598]' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
                             台灣 Pay
                           </button>
                         )}
                         {paymentSettings.bank && (
-                          <button onClick={() => setSelectedPayment('bank')} className={`py-3 rounded-xl font-bold text-sm border-2 transition ${selectedPayment === 'bank' ? 'border-gray-800 bg-gray-100 text-gray-900' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+                          <button onClick={() => handleSelectPayment('bank')} className={`py-3 rounded-xl font-bold text-sm border-2 transition ${selectedPayment === 'bank' ? 'border-gray-800 bg-gray-100 text-gray-900' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
                             銀行轉帳
                           </button>
                         )}
@@ -508,15 +519,22 @@ export default function OpenPlayPage() {
                               3. 確認回報
                               <span className="text-[10px] text-red-500 font-normal">付款後務必點擊此按鈕</span>
                             </h3>
-                            {selectedPayment === 'bank' && (
-                              <input
-                                type="text"
-                                placeholder="請輸入轉出帳號末 5 碼 (必填)"
-                                maxLength={5}
-                                className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-1 focus:ring-blue-500 mb-3"
-                                value={last5}
-                                onChange={(e) => setLast5(e.target.value)}
-                              />
+                            {(selectedPayment === 'bank' || selectedPayment === 'line') && (
+                              <div className="mb-3">
+                                <label htmlFor="payment-reference" className="block text-sm font-bold text-gray-700 mb-2">
+                                  {selectedPayment === 'bank' ? '帳號末五碼（必填）' : '付款識別碼 / 交易序號（必填）'}
+                                </label>
+                                <input
+                                  id="payment-reference"
+                                  type="text"
+                                  inputMode={selectedPayment === 'bank' ? 'numeric' : 'text'}
+                                  placeholder={selectedPayment === 'bank' ? '請輸入轉出帳號末五碼' : '請輸入付款識別碼 / 交易序號'}
+                                  maxLength={selectedPayment === 'bank' ? 5 : undefined}
+                                  className="w-full min-w-0 bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm max-sm:text-base focus:ring-1 focus:ring-blue-500"
+                                  value={last5}
+                                  onChange={(e) => setLast5(selectedPayment === 'bank' ? e.target.value.replace(/[^0-9]/g, '').slice(0, 5) : e.target.value)}
+                                />
+                              </div>
                             )}
                             <button
                               onClick={handleReportPayment}
