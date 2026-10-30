@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../../lib/supabase";
 import Link from "next/link";
-import { ArrowLeft, CheckCircle2, User, Copy, QrCode, MessageCircle, CreditCard, Banknote } from "lucide-react";
+import { ArrowLeft, CheckCircle2, User, Copy, CreditCard, Banknote, Clock, AlertCircle } from "lucide-react";
 
 export default function OpenPlayPage() {
   const [sessions, setSessions] = useState<any[]>([]);
@@ -11,17 +11,22 @@ export default function OpenPlayPage() {
   const [loading, setLoading] = useState(true);
 
   const [selectedSession, setSelectedSession] = useState<any | null>(null);
-  const [name, setName] = useState("");
+
+  // 🌟 表單欄位更新
   const [phone, setPhone] = useState("");
+  const [lineNickname, setLineNickname] = useState("");
+  const [displayName, setDisplayName] = useState("");
   const [playerNotes, setPlayerNotes] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [bookingResult, setBookingResult] = useState<any | null>(null);
-  const [paymentMode, setPaymentMode] = useState<'select' | 'online' | 'onsite'>('select');
   const [createdPlayerId, setCreatedPlayerId] = useState<number | null>(null);
-  const [lineUrl, setLineUrl] = useState("https://lin.ee/your_line_id");
 
-  // 🌟 新增：用來儲存後台抓回來的付款設定
+  // 🌟 付款相關狀態
+  const [selectedPayment, setSelectedPayment] = useState<string>(''); // 'line', 'jko', 'twqr', 'bank'
+  const [last5, setLast5] = useState("");
+  const [timeLeft, setTimeLeft] = useState<number | null>(null);
+
   const [paymentSettings, setPaymentSettings] = useState({
     line: "",
     jko: "",
@@ -29,7 +34,21 @@ export default function OpenPlayPage() {
     bank: ""
   });
 
-  // 報名成功時，先收起手機鍵盤，再回到頁面頂端。
+  // 10 分鐘倒數計時器邏輯
+  useEffect(() => {
+    if (timeLeft === null || timeLeft <= 0) return;
+    const timer = setInterval(() => {
+      setTimeLeft(prev => (prev && prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [timeLeft]);
+
+  const formatTime = (seconds: number) => {
+    const m = Math.floor(seconds / 60).toString().padStart(2, '0');
+    const s = (seconds % 60).toString().padStart(2, '0');
+    return `${m}:${s}`;
+  };
+
   useEffect(() => {
     if (!bookingResult) return;
     if (document.activeElement instanceof HTMLElement) {
@@ -40,24 +59,19 @@ export default function OpenPlayPage() {
 
   const closeBookingResult = () => {
     setBookingResult(null);
+    setTimeLeft(null);
     window.scrollTo({ top: 0, left: 0, behavior: "instant" });
   };
 
   const fetchData = async () => {
-    // 🌟 修改：一次撈出所有需要的設定
     const { data: settingData } = await supabase
       .from("settings")
       .select("key, value")
-      .in("key", ["line_url", "payment_line", "payment_jko", "payment_twqr", "payment_bank"]);
+      .in("key", ["payment_line", "payment_jko", "payment_twqr", "payment_bank"]);
 
     if (settingData) {
       const settingsMap: Record<string, string> = {};
-      settingData.forEach(item => {
-        settingsMap[item.key] = item.value;
-      });
-
-      if (settingsMap["line_url"]) setLineUrl(settingsMap["line_url"]);
-
+      settingData.forEach(item => { settingsMap[item.key] = item.value; });
       setPaymentSettings({
         line: settingsMap["payment_line"] || "",
         jko: settingsMap["payment_jko"] || "",
@@ -66,17 +80,15 @@ export default function OpenPlayPage() {
       });
     }
 
-    // 2. 讀取球場清單（用來對應多場地名稱）
     const { data: courtsData } = await supabase.from("courts").select("id, name");
     if (courtsData) setCourtsList(courtsData);
 
-    // 3. 讀取臨打場次
     const { data } = await supabase
       .from("open_play_sessions")
       .select(`
         *, 
         courts(name),
-        open_play_players(id, status, player_notes, payment_method, payment_status, created_at, users(name))
+        open_play_players(id, status, player_notes, payment_method, payment_status, created_at, display_name)
       `)
       .eq("status", "open")
       .order("session_date", { ascending: true })
@@ -90,25 +102,17 @@ export default function OpenPlayPage() {
     fetchData();
   }, []);
 
-  // 🌟 檢查場次是否已過期的共用函式
   const isSessionExpired = (sessionDate: string, startTime: string) => {
     if (!sessionDate || !startTime) return false;
     const now = new Date();
-
-    // 取得當前日期的字串 (YYYY-MM-DD)
     const todayStr = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().split("T")[0];
-
-    if (sessionDate < todayStr) return true; // 日期已經過去
+    if (sessionDate < todayStr) return true;
     if (sessionDate === todayStr) {
-      // 若是今天，比較時間 (HH:mm)
       const currentHours = now.getHours().toString().padStart(2, '0');
       const currentMins = now.getMinutes().toString().padStart(2, '0');
       const currentTimeStr = `${currentHours}:${currentMins}`;
-
-      const sessionStartTime = startTime.slice(0, 5);
-      if (sessionStartTime <= currentTimeStr) return true; // 開始時間已過或正在進行
+      if (startTime.slice(0, 5) <= currentTimeStr) return true;
     }
-
     return false;
   };
 
@@ -122,15 +126,18 @@ export default function OpenPlayPage() {
     return session.courts?.name || '未定';
   };
 
+  // 🌟 提交報名
   const handleBooking = async (e: React.FormEvent, session: any) => {
     e.preventDefault();
-    if (!name.trim() || !phone.trim()) return alert("請填寫完整資訊！");
+    if (!phone.trim() || !lineNickname.trim()) return alert("請填寫手機與 LINE 暱稱！");
     setIsSubmitting(true);
+
+    const finalDisplayName = displayName.trim() || "球友";
 
     try {
       const { data, error } = await supabase.rpc("register_open_play", {
         p_session_id: session.id,
-        p_name: name.trim(),
+        p_name: finalDisplayName, // 儲存顯示名稱
         p_phone: phone.trim(),
         p_player_notes: playerNotes.trim() || null,
       });
@@ -143,26 +150,24 @@ export default function OpenPlayPage() {
         return;
       }
 
-      const assignedStatus = data.status;
       setCreatedPlayerId(data.booking_id);
-
       setBookingResult({
         sessionTitle: session.title,
         sessionDate: session.session_date,
         sessionTime: `${session.start_time?.slice(0, 5)} - ${session.end_time?.slice(0, 5)}`,
         level: session.level,
         price: session.price,
-        name: name.trim(),
-        phone: phone.trim(),
-        status: assignedStatus,
+        status: data.status,
       });
 
-      setPaymentMode('select');
-      setSelectedSession(null);
-      setName("");
-      setPhone("");
-      setPlayerNotes("");
+      // 若為正取，啟動 10 分鐘 (600秒) 倒數計時
+      if (data.status === 'registered') {
+        setTimeLeft(600);
+      }
 
+      setSelectedPayment('');
+      setLast5('');
+      setSelectedSession(null);
       fetchData();
     } catch (error: any) {
       alert("報名失敗！錯誤原因：" + (error.message || JSON.stringify(error)));
@@ -171,33 +176,40 @@ export default function OpenPlayPage() {
     }
   };
 
-  const updatePaymentMethod = async (method: 'online' | 'onsite') => {
-    setPaymentMode(method);
-    if (createdPlayerId) {
-      await supabase
-        .from("open_play_players")
-        .update({ payment_method: method })
-        .eq("id", createdPlayerId);
-      fetchData();
-    }
-  };
+  // 🌟 送出付款回報
+  const handleReportPayment = async () => {
+    if (!selectedPayment) return alert("請先選擇付款方式！");
+    if (selectedPayment === 'bank' && !last5.trim()) return alert("請填寫轉出帳號末五碼！");
 
-  const handleCopyText = async () => {
-    const text = `【匹克球館 - 臨打繳費回報】
-👤 報名人：${bookingResult.name} (${bookingResult.phone})
-📅 場次：${bookingResult.sessionDate} | ${bookingResult.sessionTime}
-🏷️ 項目：${bookingResult.sessionTitle} (DUPR ${bookingResult.level})
-💰 應繳金額：$${bookingResult.price}
-———————————
-✅ 我已完成線上付款！
-📱 支付方式：＿＿＿＿＿ (例如：LINE Pay)
-🆔 帳號後五碼/暱稱：＿＿＿＿＿`;
-
+    setIsSubmitting(true);
     try {
-      await navigator.clipboard.writeText(text);
-      alert("✅ 報名資訊已複製！請貼上至官方 LINE 並填寫您的匯款資訊。");
-    } catch {
-      alert("複製失敗，請手動選取複製。");
+      const { data, error } = await supabase.rpc("user_report_open_play_payment", {
+        p_player_id: createdPlayerId,
+        p_phone: phone.trim(),
+        p_method: selectedPayment,
+        p_line_nickname: lineNickname.trim(),
+        p_last5: selectedPayment === 'bank' ? last5.trim() : 'NA',
+        p_display_name: displayName.trim() || "球友"
+      });
+
+      if (error) throw error;
+
+      if (!data.success) {
+        alert(data.message);
+        if (data.message.includes('逾時') || data.message.includes('失效')) {
+          closeBookingResult();
+          fetchData();
+        }
+        return;
+      }
+
+      alert("✅ 付款回報已送出！名額已為您保留，待館主核對款項。");
+      closeBookingResult();
+      fetchData();
+    } catch (error: any) {
+      alert("回報失敗：" + (error.message || "系統錯誤"));
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -228,6 +240,7 @@ export default function OpenPlayPage() {
           <p className="text-center mt-10 text-gray-500">目前沒有開放的臨打場次</p>
         ) : (
           activeSessions.map((session) => {
+            // 注意：因為現在狀態多了 pending, reported, confirmed，這裡的正取人數要把這三個狀態都算進去
             const regCount = session.open_play_players?.filter((p: any) => p.status === 'registered').length || 0;
             const waitCount = session.open_play_players?.filter((p: any) => p.status === 'waitlisted').length || 0;
             const isFull = regCount >= session.max_players && waitCount >= session.max_waitlist;
@@ -294,11 +307,11 @@ export default function OpenPlayPage() {
                             >
                               {player.status === 'registered' ? '正取' : '候補'}
                             </span>
-                            <span className="font-semibold text-gray-700 max-sm:min-w-0 max-sm:break-words">{player.users?.name}</span>
+                            {/* 🌟 修正隱私：只顯示選填的顯示名稱，若無則顯示球友 */}
+                            <span className="font-semibold text-gray-700 max-sm:min-w-0 max-sm:break-words">
+                              {player.display_name || '球友'}
+                            </span>
                           </div>
-                          {player.player_notes && (
-                            <p className="text-xs text-gray-500 ml-10 mt-0.5 break-words">💬 {player.player_notes}</p>
-                          )}
                         </div>
                       ))}
                     </div>
@@ -316,37 +329,54 @@ export default function OpenPlayPage() {
                   </button>
                 )}
 
+                {/* 🌟 重新設計的報名表單 */}
                 {selectedSession?.id === session.id && (
                   <div className="mt-4 p-4 rounded-xl border-2 animate-in fade-in bg-blue-50 border-blue-400 max-sm:min-w-0">
                     <h3 className="font-bold mb-3 text-sm text-blue-800">填寫臨打報名資料</h3>
                     <form onSubmit={(e) => handleBooking(e, session)} className="space-y-3">
-                      <input
-                        type="text"
-                        required
-                        placeholder="姓名 / 暱稱"
-                        className="w-full min-w-0 bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm max-sm:text-base focus:outline-none focus:ring-1 focus:ring-blue-500"
-                        style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
-                      />
-                      <input
-                        type="tel"
-                        required
-                        placeholder="手機號碼 (例如: 0912345678)"
-                        pattern="[0-9]{10}"
-                        className="w-full min-w-0 bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm max-sm:text-base focus:outline-none focus:ring-1 focus:ring-blue-500"
-                        style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                        value={phone}
-                        onChange={(e) => setPhone(e.target.value)}
-                      />
-                      <input
-                        type="text"
-                        placeholder="個人備註 (例如：會晚半小時到)"
-                        className="w-full min-w-0 bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm max-sm:text-base focus:outline-none focus:ring-1 focus:ring-blue-500"
-                        style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
-                        value={playerNotes}
-                        onChange={(e) => setPlayerNotes(e.target.value)}
-                      />
+                      <div>
+                        <input
+                          type="tel"
+                          required
+                          placeholder="手機號碼 (必填)"
+                          pattern="[0-9]{10}"
+                          className="w-full min-w-0 bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm max-sm:text-base focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
+                          value={phone}
+                          onChange={(e) => setPhone(e.target.value)}
+                        />
+                      </div>
+                      <div>
+                        <input
+                          type="text"
+                          required
+                          placeholder="您的 LINE 暱稱 (必填，供館方核帳用)"
+                          className="w-full min-w-0 bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm max-sm:text-base focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
+                          value={lineNickname}
+                          onChange={(e) => setLineNickname(e.target.value)}
+                        />
+                      </div>
+                      <div>
+                        <input
+                          type="text"
+                          placeholder="報名顯示名稱 (選填，未填預設為球友)"
+                          className="w-full min-w-0 bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm max-sm:text-base focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
+                          value={displayName}
+                          onChange={(e) => setDisplayName(e.target.value)}
+                        />
+                      </div>
+                      <div>
+                        <input
+                          type="text"
+                          placeholder="個人備註 (選填，例如：晚半小時到)"
+                          className="w-full min-w-0 bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm max-sm:text-base focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
+                          value={playerNotes}
+                          onChange={(e) => setPlayerNotes(e.target.value)}
+                        />
+                      </div>
                       <div className="flex gap-2 pt-1 max-sm:min-w-0">
                         <button
                           type="button"
@@ -360,7 +390,7 @@ export default function OpenPlayPage() {
                           disabled={isSubmitting}
                           className="flex-1 min-w-0 text-white font-bold py-2.5 rounded-lg text-sm shadow-sm bg-blue-600 disabled:opacity-50"
                         >
-                          {isSubmitting ? "送出中..." : "確認報名"}
+                          {isSubmitting ? "處理中..." : "保留名額，前往付款"}
                         </button>
                       </div>
                     </form>
@@ -372,6 +402,7 @@ export default function OpenPlayPage() {
         )}
       </div>
 
+      {/* 🌟 重新設計的成功與付款回報視窗 */}
       {bookingResult && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 animate-in fade-in overflow-y-auto pt-10 pb-10 max-sm:items-start max-sm:py-4 max-sm:overscroll-contain">
           <div className="bg-white rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl animate-in zoom-in-95 my-auto max-sm:min-w-0 max-sm:max-w-full max-sm:my-0 max-sm:max-h-[calc(100dvh-2rem)] max-sm:overflow-y-auto">
@@ -383,12 +414,12 @@ export default function OpenPlayPage() {
               </p>
             </div>
 
-            <div className="p-6 max-sm:p-4 max-sm:min-w-0">
+            <div className="p-5 max-sm:p-4 max-sm:min-w-0">
               {bookingResult.status === 'waitlisted' ? (
                 <div className="text-center space-y-4">
                   <p className="text-gray-600 font-medium">
                     目前為候補狀態，請勿先行付款。<br />
-                    若有正取球友取消，系統將自動遞補您的名額！
+                    若有空缺，館方將與您聯繫確認後再行繳費！
                   </p>
                   <button
                     onClick={closeBookingResult}
@@ -399,132 +430,113 @@ export default function OpenPlayPage() {
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {paymentMode === 'select' && (
-                    <>
-                      <h3 className="font-bold text-center text-gray-800 mb-4">請選擇付款方式</h3>
-                      <button
-                        onClick={() => updatePaymentMethod('online')}
-                        className="w-full flex items-center justify-center gap-2 bg-green-50 text-green-700 border-2 border-green-500 font-bold py-3.5 rounded-xl hover:bg-green-100 transition"
-                      >
-                        <CreditCard size={20} /> 線上付款 (推薦)
-                      </button>
-                      <button
-                        onClick={() => updatePaymentMethod('onsite')}
-                        className="w-full flex items-center justify-center gap-2 bg-gray-50 text-gray-700 border-2 border-gray-300 font-bold py-3.5 rounded-xl hover:bg-gray-100 transition"
-                      >
-                        現場付款
-                      </button>
-                    </>
-                  )}
+                  {/* 🌟 10 分鐘倒數計時器 */}
+                  <div className="bg-blue-50 border border-blue-200 p-4 rounded-xl text-center shadow-sm">
+                    {timeLeft === 0 ? (
+                      <div className="text-red-600 font-bold flex flex-col items-center gap-1">
+                        <AlertCircle size={24} />
+                        <p>保留時間已逾時！</p>
+                        <p className="text-xs mt-1">名額已被系統自動釋出。<br />若您已匯款，請直接聯繫官方 LINE。</p>
+                      </div>
+                    ) : (
+                      <>
+                        <p className="text-sm font-bold text-gray-700 flex items-center justify-center gap-1 mb-1">
+                          <Clock size={16} className="text-blue-600" /> 請於限時內完成付款回報
+                        </p>
+                        <p className="text-3xl font-black text-red-600 font-mono tracking-wider">
+                          {timeLeft !== null ? formatTime(timeLeft) : '10:00'}
+                        </p>
+                        <p className="text-xs text-gray-500 mt-1">逾時未回報，系統將自動釋出名額</p>
+                      </>
+                    )}
+                  </div>
 
-                  {paymentMode === 'onsite' && (
-                    <div className="text-center space-y-4 animate-in slide-in-from-right-4">
-                      <p className="text-gray-600 font-medium">
-                        您已選擇現場付款，<br />
-                        請於開打前 10 分鐘至櫃檯完成現金付款！
-                      </p>
-                      <button
-                        onClick={closeBookingResult}
-                        className="w-full bg-gray-800 text-white font-bold py-3 rounded-xl"
-                      >
-                        完成
-                      </button>
+                  <div className="bg-gray-50 p-3 rounded-lg border border-gray-100 text-sm">
+                    <div className="flex justify-between mb-1">
+                      <span className="text-gray-500">應付金額</span>
+                      <span className="font-bold text-blue-600">${bookingResult.price}</span>
                     </div>
-                  )}
+                  </div>
 
-                  {/* 🌟 替換 UI：全新的線上付款選項區塊 */}
-                  {paymentMode === 'online' && (
-                    <div className="space-y-3 animate-in slide-in-from-right-4">
-                      <div className="bg-blue-50 border border-blue-200 p-3 rounded-lg text-sm text-blue-800 text-center mb-3">
-                        應繳金額：
-                        <span className="font-bold text-xl text-blue-600 ml-1">${bookingResult.price}</span>
+                  {timeLeft !== 0 && (
+                    <>
+                      <h3 className="font-bold text-gray-800 text-sm">1. 請選擇付款方式</h3>
+                      <div className="grid grid-cols-2 gap-2">
+                        {paymentSettings.line && (
+                          <button onClick={() => setSelectedPayment('line')} className={`py-3 rounded-xl font-bold text-sm border-2 transition ${selectedPayment === 'line' ? 'border-[#06C755] bg-[#06C755]/10 text-[#06C755]' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+                            LINE Pay
+                          </button>
+                        )}
+                        {paymentSettings.jko && (
+                          <button onClick={() => setSelectedPayment('jko')} className={`py-3 rounded-xl font-bold text-sm border-2 transition ${selectedPayment === 'jko' ? 'border-[#E60012] bg-[#E60012]/10 text-[#E60012]' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+                            街口支付
+                          </button>
+                        )}
+                        {paymentSettings.twqr && (
+                          <button onClick={() => setSelectedPayment('twqr')} className={`py-3 rounded-xl font-bold text-sm border-2 transition ${selectedPayment === 'twqr' ? 'border-[#005598] bg-[#005598]/10 text-[#005598]' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+                            台灣 Pay
+                          </button>
+                        )}
+                        {paymentSettings.bank && (
+                          <button onClick={() => setSelectedPayment('bank')} className={`py-3 rounded-xl font-bold text-sm border-2 transition ${selectedPayment === 'bank' ? 'border-gray-800 bg-gray-100 text-gray-900' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+                            銀行轉帳
+                          </button>
+                        )}
                       </div>
 
-                      {paymentSettings.line && (
-                        <a
-                          href={paymentSettings.line}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="w-full flex items-center justify-center gap-2 bg-[#06C755] text-white font-bold py-3.5 rounded-xl shadow hover:bg-[#05b34c] transition"
-                        >
-                          使用 LINE Pay 付款
-                        </a>
-                      )}
+                      {selectedPayment && (
+                        <div className="animate-in fade-in slide-in-from-top-2 bg-white border border-gray-200 shadow-sm p-4 rounded-xl mt-4 space-y-4">
+                          <div>
+                            <h3 className="font-bold text-gray-800 text-sm mb-2">2. 前往付款</h3>
+                            {selectedPayment === 'line' && <a href={paymentSettings.line} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center bg-[#06C755] text-white font-bold py-3 rounded-lg shadow-sm">開啟 LINE Pay</a>}
+                            {selectedPayment === 'jko' && <a href={paymentSettings.jko} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center bg-[#E60012] text-white font-bold py-3 rounded-lg shadow-sm">開啟 街口支付</a>}
+                            {selectedPayment === 'twqr' && <a href={paymentSettings.twqr} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center bg-[#005598] text-white font-bold py-3 rounded-lg shadow-sm">開啟 台灣 Pay</a>}
 
-                      {paymentSettings.jko && (
-                        <a
-                          href={paymentSettings.jko}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="w-full flex items-center justify-center gap-2 bg-[#E60012] text-white font-bold py-3.5 rounded-xl shadow hover:bg-[#cc0010] transition"
-                        >
-                          使用 街口支付 付款
-                        </a>
-                      )}
+                            {selectedPayment === 'bank' && (
+                              <div className="bg-gray-100 p-3 rounded-lg">
+                                <p className="text-xs text-gray-500 font-bold mb-1">銀行轉帳帳號</p>
+                                <div className="flex justify-between items-center gap-2">
+                                  <p className="text-sm font-medium text-gray-900 bg-white px-2 py-1.5 rounded border border-gray-300 flex-1">{paymentSettings.bank}</p>
+                                  <button onClick={handleCopyBankAccount} className="bg-gray-200 text-gray-700 p-1.5 rounded" title="複製帳號"><Copy size={16} /></button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
 
-                      {paymentSettings.twqr && (
-                        <a
-                          href={paymentSettings.twqr}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="w-full flex items-center justify-center gap-2 bg-[#005598] text-white font-bold py-3.5 rounded-xl shadow hover:bg-[#004780] transition"
-                        >
-                          使用 台灣 Pay (TWQR) 付款
-                        </a>
-                      )}
-
-                      {paymentSettings.bank && (
-                        <div className="bg-gray-100 p-3 rounded-xl border border-gray-200 mt-2">
-                          <p className="text-xs text-gray-500 font-bold mb-1 flex items-center gap-1">
-                            <Banknote size={14} /> 銀行轉帳帳號
-                          </p>
-                          <div className="flex justify-between items-center gap-2">
-                            <p className="text-sm font-medium text-gray-800 break-all bg-white px-2 py-1.5 rounded border border-gray-300 flex-1">
-                              {paymentSettings.bank}
-                            </p>
+                          <div className="border-t border-gray-100 pt-3">
+                            <h3 className="font-bold text-gray-800 text-sm mb-2 flex justify-between">
+                              3. 確認回報
+                              <span className="text-[10px] text-red-500 font-normal">付款後務必點擊此按鈕</span>
+                            </h3>
+                            {selectedPayment === 'bank' && (
+                              <input
+                                type="text"
+                                placeholder="請輸入轉出帳號末 5 碼 (必填)"
+                                maxLength={5}
+                                className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-1 focus:ring-blue-500 mb-3"
+                                value={last5}
+                                onChange={(e) => setLast5(e.target.value)}
+                              />
+                            )}
                             <button
-                              onClick={handleCopyBankAccount}
-                              className="bg-gray-200 hover:bg-gray-300 text-gray-700 p-1.5 rounded transition shrink-0"
-                              title="複製帳號"
+                              onClick={handleReportPayment}
+                              disabled={isSubmitting}
+                              className="w-full bg-blue-600 text-white font-bold py-3 rounded-xl shadow-md active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
                             >
-                              <Copy size={16} />
+                              {isSubmitting ? '處理中...' : <><CheckCircle2 size={18} /> 我已完成付款</>}
                             </button>
                           </div>
                         </div>
                       )}
-
-                      <hr className="my-3 border-gray-200" />
-
-                      <p className="text-xs text-center text-gray-500 font-bold">付款完成後，請務必點擊下方按鈕回報！</p>
-
-                      <div className="grid grid-cols-2 gap-2">
-                        {/* 🌟 調整：左邊按鈕 - 複製報名資訊 */}
-                        <button
-                          onClick={handleCopyText}
-                          className="flex items-center justify-center gap-1.5 bg-gray-800 text-white font-bold py-3 rounded-xl shadow-md active:scale-95 transition text-sm"
-                        >
-                          <Copy size={16} /> 複製報名資訊
-                        </button>
-
-                        {/* 🌟 調整：右邊按鈕 - 官方 LINE 回報 */}
-                        <a
-                          href={lineUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex items-center justify-center gap-1.5 bg-[#06C755] text-white font-bold py-3 rounded-xl shadow-md active:scale-95 transition text-sm"
-                        >
-                          <MessageCircle size={16} /> 官方 LINE 回報
-                        </a>
-                      </div>
-
-                      <button
-                        onClick={closeBookingResult}
-                        className="w-full text-gray-400 text-sm font-bold py-2 hover:text-gray-600 mt-1"
-                      >
-                        稍後再說，先關閉視窗
-                      </button>
-                    </div>
+                    </>
                   )}
+
+                  <button
+                    onClick={closeBookingResult}
+                    className="w-full text-gray-400 text-sm font-bold py-2 hover:text-gray-600 mt-2"
+                  >
+                    關閉視窗 (可至「查詢我的預約」繼續完成)
+                  </button>
                 </div>
               )}
             </div>
