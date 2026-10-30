@@ -312,6 +312,98 @@ export default function AdminPage() {
     }
   }, [activeTab, dateFilter, customStartDate, customEndDate, fetchAllData, isAuthenticated]);
 
+  const fetchHistoryData = async () => {
+    setIsFetchingHistory(true);
+    setHistoryResults([]);
+    let results: any[] = [];
+
+    try {
+      if (historyType === 'all' || historyType === 'courts') {
+        const { data: courtsData } = await supabase
+          .from("court_bookings")
+          .select(`*, users (name, phone), courts (name)`)
+          .gte("booking_date", historyStartDate)
+          .lte("booking_date", historyEndDate)
+          .order("booking_date", { ascending: false })
+          .order("court_id", { ascending: true })
+          .order("user_id", { ascending: true })
+          .order("start_time", { ascending: true });
+
+        if (courtsData) {
+          const groupedCourts: any[] = [];
+          let currentGroup: any = null;
+
+          for (const b of courtsData) {
+            if (!currentGroup) {
+              currentGroup = { ...b, ids: [b.id], totalPrice: b.price || 250, _itemType: 'courts', sortDate: b.booking_date };
+            } else {
+              const isContiguous =
+                currentGroup.booking_date === b.booking_date &&
+                currentGroup.court_id === b.court_id &&
+                currentGroup.user_id === b.user_id &&
+                currentGroup.status === b.status &&
+                currentGroup.payment_method === b.payment_method &&
+                currentGroup.payment_status === b.payment_status &&
+                currentGroup.end_time === b.start_time;
+
+              if (isContiguous) {
+                currentGroup.end_time = b.end_time;
+                currentGroup.ids.push(b.id);
+                currentGroup.totalPrice += (b.price || 250);
+              } else {
+                groupedCourts.push(currentGroup);
+                currentGroup = { ...b, ids: [b.id], totalPrice: b.price || 250, _itemType: 'courts', sortDate: b.booking_date };
+              }
+            }
+          }
+          if (currentGroup) groupedCourts.push(currentGroup);
+          results = [...results, ...groupedCourts];
+        }
+      }
+
+      if (historyType === 'all' || historyType === 'classes') {
+        const { data: classesData } = await supabase
+          .from("classes")
+          .select(`*, courts (name), class_bookings (id, status, notes, need_paddle, payment_method, payment_status, is_checked_in, users (name, phone))`)
+          .gte("class_date", historyStartDate)
+          .lte("class_date", historyEndDate)
+          .order("class_date", { ascending: false });
+        if (classesData) {
+          results = [...results, ...classesData.map(c => ({ ...c, _itemType: 'classes', sortDate: c.class_date }))];
+        }
+      }
+
+      if (historyType === 'all' || historyType === 'open_plays') {
+        const { data: openPlaysData } = await supabase
+          .from("open_play_sessions")
+          .select(`
+            *, courts(name), 
+            open_play_players (
+              id, status, created_at, player_notes, payment_method, payment_status, is_checked_in,
+              booking_no, line_nickname, display_name, payment_deadline, payment_report_time, 
+              payment_account_last5, admin_confirm_time, admin_confirmer, 
+              refund_status, refund_amount, refund_method, refund_time, refund_note, 
+              users (name, phone)
+            )
+          `)
+          .gte("session_date", historyStartDate)
+          .lte("session_date", historyEndDate)
+          .order("session_date", { ascending: false });
+        if (openPlaysData) {
+          results = [...results, ...openPlaysData.map(o => ({ ...o, _itemType: 'open_plays', sortDate: o.session_date }))];
+        }
+      }
+
+      results.sort((a, b) => (a.sortDate < b.sortDate ? 1 : -1));
+      setHistoryResults(results);
+
+    } catch (err: any) {
+      alert("查詢歷史資料失敗：" + (err.message || "未知錯誤"));
+    } finally {
+      setIsFetchingHistory(false);
+    }
+  };
+
   const handleAdminConfirmPayment = async (playerId: number) => {
     setIsSubmitting(true);
     try {
@@ -1050,9 +1142,6 @@ export default function AdminPage() {
           </div>
         ) : (
           <>
-            {/* ========================================================================= */}
-            {/* ⚙️ 設定分頁 (已補回) */}
-            {/* ========================================================================= */}
             {activeTab === 'settings' && (
               <div className="space-y-4 animate-in fade-in pb-10">
                 <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200 space-y-4">
