@@ -19,7 +19,7 @@ const formatValidDate = (dateStr: string | undefined | null) => {
 };
 
 export default function MyBookingsPage() {
-  const [searchName, setSearchName] = useState(""); // 新增：LINE 暱稱雙重驗證
+  const [searchName, setSearchName] = useState(""); // 雙重驗證：LINE 暱稱
   const [phone, setPhone] = useState("");
   const [loading, setLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
@@ -329,7 +329,7 @@ export default function MyBookingsPage() {
       end: session?.end_time?.slice(0, 5) || '',
       amount: readAmount(session?.price), reference: String(b.booking_no || b.id || ''),
       detail: session?.level ? `DUPR ${session.level}` : undefined,
-      rawBooking: b // 傳遞原始資料
+      rawBooking: b
     };
   };
 
@@ -364,10 +364,10 @@ export default function MyBookingsPage() {
     }
   };
 
-  // 🌟 複製臨打取消/退款通知
+  // 🌟 複製臨打取消/退款通知（暗藏報名編號給館長對帳）
   const handleCopyCancelNotice = async (b: any, session: any) => {
     const text = `【PickleGo－臨打取消與退款查核】
-報名編號：${b.booking_no || b.id.split('-')[0].toUpperCase()}
+🎫 報名編號：${b.booking_no || b.id.split('-')[0].toUpperCase()}
 👤 報名人：${b.display_name || '球友'} (LINE: ${searchName.trim()}, ${phone.trim()})
 📅 場次：${session.session_date} | ${session.start_time?.slice(0, 5)}-${session.end_time?.slice(0, 5)}
 💰 原應繳金額：$${session.price}
@@ -581,6 +581,7 @@ export default function MyBookingsPage() {
                   openPlayBookings.map((b) => {
                     const session = getRel(b.open_play_sessions);
                     const court = getRel(session?.courts);
+                    const isReportedOrPaid = ['reported', 'confirmed', 'paid'].includes(b.payment_status);
 
                     return (
                       <div
@@ -606,11 +607,20 @@ export default function MyBookingsPage() {
                           📍 {court?.name || '未定'} (DUPR {session?.level})
                         </p>
 
-                        {/* 🌟 臨打專用報名摘要方框：已去蕪存菁 */}
+                        {/* 🌟 臨打專用報名摘要方框：移除無用編號，換成回報資訊 */}
                         <div className="text-sm text-gray-600 space-y-1 bg-gray-50 p-3 rounded-lg border border-gray-100 break-all">
                           <p>👤 顯示名稱：<span className="font-medium text-gray-800">{b.display_name || '球友'}</span></p>
                           <p>📅 活動時間：<span className="font-medium text-gray-800">{session?.session_date} | {session?.start_time?.slice(0, 5)}-{session?.end_time?.slice(0, 5)}</span></p>
-                          <p>🎫 報名編號：<span className="font-medium text-gray-800">{b.booking_no || b.id.split('-')[0].toUpperCase()}</span></p>
+
+                          {/* 新增的付款回報資訊 (數位收據) */}
+                          <p>💳 帳號/識別碼：
+                            <span className={`font-medium ${isReportedOrPaid ? 'text-gray-800' : 'text-amber-600'}`}>
+                              {isReportedOrPaid
+                                ? (b.payment_account_last5 && b.payment_account_last5 !== 'NA' ? b.payment_account_last5 : '已回報')
+                                : '待回報'}
+                            </span>
+                          </p>
+
                           {formatValidDate(b.created_at) && (
                             <p>🕒 報名時間：<span className="font-medium text-gray-800">{formatValidDate(b.created_at)}</span></p>
                           )}
