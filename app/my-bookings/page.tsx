@@ -10,7 +10,16 @@ import {
 
 const getRel = (obj: any) => (Array.isArray(obj) ? obj[0] : obj);
 
+// 解決 Invalid Date 的防呆小幫手
+const formatValidDate = (dateStr: string | undefined | null) => {
+  if (!dateStr) return null;
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return null;
+  return d.toLocaleString('zh-TW', { hour12: false });
+};
+
 export default function MyBookingsPage() {
+  const [searchName, setSearchName] = useState(""); // 新增：LINE 暱稱雙重驗證
   const [phone, setPhone] = useState("");
   const [loading, setLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
@@ -121,6 +130,9 @@ export default function MyBookingsPage() {
   const handleSearch = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     const cleanPhone = phone.trim();
+    const cleanName = searchName.trim().toLowerCase();
+
+    if (!cleanName) return alert("請輸入 LINE 暱稱進行驗證");
     if (!cleanPhone) return alert("請輸入手機號碼");
 
     setLoading(true);
@@ -133,7 +145,17 @@ export default function MyBookingsPage() {
 
       if (error) throw error;
 
-      if (!data || !data.success) {
+      // 🛡️ 雙重驗證防護：比對輸入的 LINE 暱稱是否符合使用者名稱或臨打紀錄中的暱稱
+      let isMatch = false;
+      const dbUserName = data?.user?.name?.toLowerCase() || '';
+
+      if (dbUserName === cleanName) {
+        isMatch = true;
+      } else if (data?.open_play_bookings?.some((b: any) => b.line_nickname?.toLowerCase() === cleanName)) {
+        isMatch = true;
+      }
+
+      if (!data || !data.success || !isMatch) {
         setUser(null);
         setCourtBookings([]);
         setOpenPlayBookings([]);
@@ -326,14 +348,14 @@ export default function MyBookingsPage() {
   const handleCopyText = async (item: PaymentInfo) => {
     const category = item.kind === 'court' ? '場地預約' : item.kind === 'class' ? '體驗課程' : '報名';
     const text = `【PickleGo－${category}繳費回報】
-👤 預約人：${user?.name || ''}（${user?.phone || phone.trim()}）
+👤 預約人：${searchName.trim()}（${phone.trim()}）
 📅 日期時間：${item.date} ${item.start}–${item.end}
 🏷️ 項目：${item.title}${item.detail ? `（${item.detail}）` : ''}
 💰 應繳金額：${formatMoney(item.amount)}
 ——————————
 ✅ 我已完成線上付款
 📱 支付方式：＿＿＿＿（例如：LINE Pay）
-🆔 帳號後五碼/暱稱：＿＿＿＿（請填寫）`;
+🆔 帳號後五碼/識別碼：＿＿＿＿（請填寫）`;
     try {
       await navigator.clipboard.writeText(text);
       alert('✅ 報名資訊已複製！請貼上至官方 LINE 並填寫您的匯款資訊。');
@@ -345,9 +367,9 @@ export default function MyBookingsPage() {
   // 🌟 複製臨打取消/退款通知
   const handleCopyCancelNotice = async (b: any, session: any) => {
     const text = `【PickleGo－臨打取消與退款查核】
-報名編號：${b.booking_no || b.id}
-👤 報名人：${b.display_name || '球友'} (LINE: ${b.line_nickname || '未填'}, ${user?.phone || phone.trim()})
-📅 場次：${session.session_date} | ${session.start_time?.slice(0, 5)} - ${session.end_time?.slice(0, 5)}
+報名編號：${b.booking_no || b.id.split('-')[0].toUpperCase()}
+👤 報名人：${b.display_name || '球友'} (LINE: ${searchName.trim()}, ${phone.trim()})
+📅 場次：${session.session_date} | ${session.start_time?.slice(0, 5)}-${session.end_time?.slice(0, 5)}
 💰 原應繳金額：$${session.price}
 💳 已回報付款方式：${b.payment_method === 'bank' ? `銀行轉帳 (末五碼 ${b.payment_account_last5})` : (b.payment_method || '未回報')}
 ———————————
@@ -419,14 +441,25 @@ export default function MyBookingsPage() {
 
       <div className="p-5 space-y-5">
         <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200">
-          <h2 className="font-bold text-gray-800 mb-3 text-sm">請輸入報名時的手機號碼</h2>
-          <form onSubmit={handleSearch} className="flex flex-col gap-2 sm:flex-row">
+          <h2 className="font-bold text-gray-800 mb-1 text-sm text-center">雙重驗證查詢</h2>
+          <p className="text-xs text-gray-500 text-center mb-4">請輸入您報名時的 LINE 暱稱與手機號碼</p>
+
+          <form onSubmit={handleSearch} className="flex flex-col gap-3">
+            <input
+              type="text"
+              required
+              placeholder="請輸入 LINE 暱稱"
+              className="w-full bg-white text-gray-900 border-2 border-gray-200 rounded-xl p-3 text-base sm:text-sm focus:outline-none focus:border-gray-800"
+              style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
+              value={searchName}
+              onChange={(e) => setSearchName(e.target.value)}
+            />
             <input
               type="tel"
               required
-              placeholder="例如: 0912345678"
+              placeholder="請輸入手機號碼 (例如: 0912345678)"
               pattern="[0-9]{10}"
-              className="w-full min-w-0 bg-white text-gray-900 border-2 border-gray-200 rounded-xl p-3 text-base sm:text-sm sm:flex-1 focus:outline-none focus:border-gray-800"
+              className="w-full bg-white text-gray-900 border-2 border-gray-200 rounded-xl p-3 text-base sm:text-sm focus:outline-none focus:border-gray-800"
               style={{ backgroundColor: "white", color: "#111827", colorScheme: "light" }}
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
@@ -434,9 +467,10 @@ export default function MyBookingsPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full sm:w-auto bg-gray-800 text-white p-3 rounded-xl shadow-md disabled:opacity-50 flex items-center justify-center min-w-[3rem]"
+              className="w-full bg-gray-800 text-white p-3 rounded-xl shadow-md disabled:opacity-50 flex items-center justify-center gap-2 mt-1"
             >
-              <Search size={20} />
+              <Search size={18} />
+              <span className="font-bold">查詢紀錄</span>
             </button>
           </form>
         </div>
@@ -445,13 +479,14 @@ export default function MyBookingsPage() {
           <p className="text-center mt-10 font-bold animate-pulse text-gray-500">正在安全調閱資料...</p>
         ) : hasSearched && !user ? (
           <div className="bg-red-50 border border-red-200 p-5 rounded-2xl text-center text-red-600">
-            <p className="font-bold">找不到此手機號碼的預約紀錄</p>
+            <p className="font-bold">找不到相符的預約紀錄</p>
+            <p className="text-xs mt-1">請確認您的 LINE 暱稱與手機號碼是否完全正確</p>
           </div>
         ) : hasSearched && user ? (
           <div className="space-y-4 animate-in fade-in duration-300">
             <div className="bg-gray-800 text-white p-4 rounded-xl flex flex-col gap-1 sm:flex-row sm:justify-between sm:items-center shadow-md min-w-0">
-              <span className="font-bold break-words min-w-0">{user.name} 的預約紀錄</span>
-              <span className="text-xs text-gray-300 break-all">{user.phone}</span>
+              <span className="font-bold break-words min-w-0">{searchName.trim()} 的預約紀錄</span>
+              <span className="text-xs text-gray-300 break-all">{phone.trim()}</span>
             </div>
 
             <div className="flex gap-1 bg-gray-200 p-1 rounded-xl min-w-0">
@@ -503,7 +538,7 @@ export default function MyBookingsPage() {
                         </div>
                         <div className="text-sm text-gray-600 space-y-1 font-medium min-w-0 break-words">
                           <p>
-                            📅 {b.booking_date} | {b.start_time?.slice(0, 5)} - {b.end_time?.slice(0, 5)}
+                            📅 {b.booking_date} | {b.start_time?.slice(0, 5)}-{b.end_time?.slice(0, 5)}
                           </p>
                           <p className="text-xs text-gray-400 mt-1">共計 {b.ids.length * 0.5} 小時</p>
                         </div>
@@ -571,14 +606,14 @@ export default function MyBookingsPage() {
                           📍 {court?.name || '未定'} (DUPR {session?.level})
                         </p>
 
-                        {/* 🌟 臨打專用報名摘要方框 */}
+                        {/* 🌟 臨打專用報名摘要方框：已去蕪存菁 */}
                         <div className="text-sm text-gray-600 space-y-1 bg-gray-50 p-3 rounded-lg border border-gray-100 break-all">
                           <p>👤 顯示名稱：<span className="font-medium text-gray-800">{b.display_name || '球友'}</span></p>
-                          <p>💬 LINE 暱稱：<span className="font-medium text-gray-800">{b.line_nickname || '未填'}</span></p>
-                          <p>📱 手機號碼：<span className="font-medium text-gray-800">{user?.phone || phone}</span></p>
-                          <p>📅 活動時間：<span className="font-medium text-gray-800">{session?.session_date} | {session?.start_time?.slice(0, 5)} - {session?.end_time?.slice(0, 5)}</span></p>
-                          <p>🎫 報名編號：<span className="font-medium text-gray-800">{b.booking_no || b.id}</span></p>
-                          <p>🕒 報名時間：<span className="font-medium text-gray-800">{new Date(b.created_at).toLocaleString('zh-TW')}</span></p>
+                          <p>📅 活動時間：<span className="font-medium text-gray-800">{session?.session_date} | {session?.start_time?.slice(0, 5)}-{session?.end_time?.slice(0, 5)}</span></p>
+                          <p>🎫 報名編號：<span className="font-medium text-gray-800">{b.booking_no || b.id.split('-')[0].toUpperCase()}</span></p>
+                          {formatValidDate(b.created_at) && (
+                            <p>🕒 報名時間：<span className="font-medium text-gray-800">{formatValidDate(b.created_at)}</span></p>
+                          )}
                           <p>💰 應付金額：<span className="font-medium text-blue-600">${session?.price}</span></p>
                         </div>
 
@@ -590,7 +625,7 @@ export default function MyBookingsPage() {
                             </p>
                             <button
                               onClick={() => {
-                                setLineNickname(b.line_nickname || "");
+                                setLineNickname(b.line_nickname || searchName.trim());
                                 setSelectedPayment("");
                                 setLast5("");
                                 setActivePaymentModal(getPlayPayment(b));
@@ -607,14 +642,14 @@ export default function MyBookingsPage() {
                             <p className="font-bold flex items-center gap-1 mb-1"><Check size={16} /> 付款回報已送出</p>
                             <p className="text-xs mb-2">名額已保留，待館主核對付款。</p>
                             <p className="text-xs">💳 付款方式：{b.payment_method}</p>
-                            {b.payment_report_time && <p className="text-xs">🕒 回報時間：{new Date(b.payment_report_time).toLocaleString('zh-TW')}</p>}
+                            {formatValidDate(b.payment_report_time) && <p className="text-xs">🕒 回報時間：{formatValidDate(b.payment_report_time)}</p>}
                           </div>
                         )}
 
                         {b.status === 'registered' && b.payment_status === 'confirmed' && (
                           <div className="mt-3 p-3 bg-emerald-50 border border-emerald-100 rounded-lg text-sm text-emerald-800">
                             <p className="font-bold flex items-center gap-1 mb-1"><CheckCircle2 size={16} /> 付款已確認</p>
-                            {b.admin_confirm_time && <p className="text-xs">🕒 確認時間：{new Date(b.admin_confirm_time).toLocaleString('zh-TW')}</p>}
+                            {formatValidDate(b.admin_confirm_time) && <p className="text-xs">🕒 確認時間：{formatValidDate(b.admin_confirm_time)}</p>}
                           </div>
                         )}
 
@@ -636,7 +671,7 @@ export default function MyBookingsPage() {
                               <div className="text-xs mt-1 text-gray-600 space-y-0.5">
                                 <p>退款金額：${b.refund_amount}</p>
                                 <p>退款方式：{b.refund_method}</p>
-                                {b.refund_time && <p>退款時間：{new Date(b.refund_time).toLocaleString('zh-TW')}</p>}
+                                {formatValidDate(b.refund_time) && <p>退款時間：{formatValidDate(b.refund_time)}</p>}
                               </div>
                             )}
 
@@ -724,7 +759,7 @@ export default function MyBookingsPage() {
                           </span>
                         </div>
                         <div className="text-sm text-gray-600 space-y-1 min-w-0 break-words">
-                          <p>📅 {cls?.class_date} | {cls?.start_time?.slice(0, 5)} - {cls?.end_time?.slice(0, 5)}</p>
+                          <p>📅 {cls?.class_date} | {cls?.start_time?.slice(0, 5)}-{cls?.end_time?.slice(0, 5)}</p>
                           <p>🧑‍🏫 教練: {cls?.coach}</p>
                         </div>
                         {b.status === 'booked' && (
