@@ -1,20 +1,17 @@
-/* 1. 這三行絕對不能刪除，它們負責載入 Tailwind CSS */
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
 
-/* 2. 接下來才是我們的色彩變數 */
-:root {
-  --color-background: #FAF9F6;
+@theme {
+  --color-background: #F8F9FA;
   --color-surface: #FFFFFF;
-  --color-primary: #F3C84B;
-  --color-text: #252A2D;
+  --color-text: #111827;
   --color-text-secondary: #6B7280;
-  --color-success: #27865B;
-  --color-success-soft: #E5F3E9;
-  --color-warning-soft: #FEF7E0;
-  --color-danger: #D9534F;
-  --color-danger-soft: #FCEAE9;
-  --color-border: #E9ECEF;
+  --color-primary: #15803D;
+  /* PickleGo 主視覺綠 */
+  --color-accent: #F3C84B;
+  /* PickleGo 匹克球黃 */
+  --color-border: #E5E7EB;
   --color-neutral-soft: #F3F4F6;
+  --color-danger: #EF4444;
+  --color-success: #16A34A;
+  --color-warning: #F59E0B;
 }
