@@ -1,4 +1,9 @@
-/* globals.css 加入色彩變數 */
+/* 1. 這三行絕對不能刪除，它們負責載入 Tailwind CSS */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 2. 接下來才是我們的色彩變數 */
 :root {
   --color-background: #FAF9F6;
   --color-surface: #FFFFFF;
