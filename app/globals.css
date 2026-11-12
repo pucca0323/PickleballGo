@@ -1,5 +1,15 @@
-@import "tailwindcss";
-
-body {
-  @apply bg-gray-50 text-gray-900;
+/* globals.css 加入色彩變數 */
+:root {
+  --color-background: #FAF9F6;
+  --color-surface: #FFFFFF;
+  --color-primary: #F3C84B;
+  --color-text: #252A2D;
+  --color-text-secondary: #6B7280;
+  --color-success: #27865B;
+  --color-success-soft: #E5F3E9;
+  --color-warning-soft: #FEF7E0;
+  --color-danger: #D9534F;
+  --color-danger-soft: #FCEAE9;
+  --color-border: #E9ECEF;
+  --color-neutral-soft: #F3F4F6;
 }
