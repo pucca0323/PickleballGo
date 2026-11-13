@@ -20,9 +20,7 @@ export default function FindGamesPage() {
   const [selectedPayment, setSelectedPayment] = useState<string>("");
   const [last5, setLast5] = useState("");
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
-  const [paymentSettings, setPaymentSettings] = useState({ line: "", bank: "" });
 
-  // 篩選與日期狀態
   const [datesList, setDatesList] = useState<{ date: string; display: string }[]>([]);
   const [selectedDate, setSelectedDate] = useState<string>("");
   const [showFilterSheet, setShowFilterSheet] = useState(false);
@@ -32,7 +30,6 @@ export default function FindGamesPage() {
 
   const listRef = useRef<HTMLDivElement>(null);
 
-  // 補上遺漏的時間格式化函式
   const formatTime = (seconds: number) => {
     const m = Math.floor(seconds / 60).toString().padStart(2, "0");
     const s = (seconds % 60).toString().padStart(2, "0");
@@ -69,7 +66,6 @@ export default function FindGamesPage() {
   }, []);
 
   useEffect(() => {
-    // Deep Link 網址定位邏輯
     if (sessions.length > 0) {
       const params = new URLSearchParams(window.location.search);
       const deepLinkId = params.get("session");
@@ -94,12 +90,6 @@ export default function FindGamesPage() {
   }, [timeLeft]);
 
   const fetchData = async () => {
-    const { data: settingData } = await supabase.from("settings").select("key, value").in("key", ["payment_line", "payment_bank"]);
-    if (settingData) {
-      const settingsMap: Record<string, string> = {};
-      settingData.forEach((item) => settingsMap[item.key] = item.value);
-      setPaymentSettings({ line: settingsMap["payment_line"] || "", bank: settingsMap["payment_bank"] || "" });
-    }
     const { data: courtsData } = await supabase.from("courts").select("id, name");
     if (courtsData) setCourtsList(courtsData);
     const { data } = await supabase.from("open_play_sessions").select(`*, courts(name), open_play_players(id, status, phone, line_nickname)`).eq("status", "open").order("session_date", { ascending: true }).order("start_time", { ascending: true });
@@ -126,7 +116,7 @@ export default function FindGamesPage() {
       setCreatedPlayerId(data.booking_id);
       setBookingResult({ ...session, status: data.status });
 
-      if (data.status === "registered") setTimeLeft(600); // 只有正取才倒數
+      if (data.status === "registered") setTimeLeft(600);
       setSelectedPayment(""); setLast5(""); setSelectedSession(null); fetchData();
     } catch (error: any) { alert("報名失敗！錯誤原因：" + error.message); } finally { setIsSubmitting(false); }
   };
@@ -137,7 +127,7 @@ export default function FindGamesPage() {
 
     setIsSubmitting(true);
     try {
-      const finalLast5 = selectedPayment === "bank" ? last5.trim() : "TWQR"; // TWQR 後台補位
+      const finalLast5 = selectedPayment === "bank" ? last5.trim() : "TWQR";
       const { data, error } = await supabase.rpc("user_report_open_play_payment", {
         p_player_id: createdPlayerId, p_phone: phone.trim(), p_method: selectedPayment, p_line_nickname: lineNickname.trim(), p_last5: finalLast5, p_display_name: lineNickname.trim()
       });
@@ -155,7 +145,7 @@ export default function FindGamesPage() {
   const handleShare = (e: React.MouseEvent, session: any) => {
     e.stopPropagation();
     const url = `${window.location.origin}/?session=${session.id}`;
-    const locStr = `${session.city || ''}${session.district || ''} ${session.title}`;
+    const locStr = `${session.city || ''}${session.district || ''} ${session.address || ''} ${session.title}`.trim();
     const text = `🎾 PickleGo 臨打邀請\n【時間】${session.session_date} ${session.start_time?.slice(0, 5)}-${session.end_time?.slice(0, 5)}\n【地點】${locStr} (${getCourtNames(session)})\n【程度】${session.level || '不限'}\n【費用】$${session.price || 0} / 人\n👇 點擊網址快速報名：\n${url}`;
     navigator.clipboard.writeText(text);
     alert("✅ 報名資訊與網址已複製！");
@@ -167,7 +157,7 @@ export default function FindGamesPage() {
       if (filterRegion !== "全部") {
         const c = (s.city || s.title || "").toLowerCase();
         if (filterRegion === "北部" && !['台北', '新北', '基隆', '桃園', '新竹'].some(x => c.includes(x))) return false;
-        if (filterRegion === "中部" && !['台中', '彰化', '苗栗', '南投', '雲林'].some(x => c.includes(x))) return false;
+        if (filterRegion === "中部" && !['台中', '彰化', '苗栗', '南投', '雲林', '龍井'].some(x => c.includes(x))) return false;
         if (filterRegion === "南部" && !['台南', '高雄', '嘉義', '屏東'].some(x => c.includes(x))) return false;
       }
       if (filterTime !== "全部") {
@@ -227,7 +217,7 @@ export default function FindGamesPage() {
                       <p className="font-extrabold text-[15px] text-gray-900 leading-snug">{session.start_time?.slice(0, 5)}–{session.end_time?.slice(0, 5)}</p>
                       <p className="text-sm font-medium text-gray-700 mt-0.5 truncate">{session.title}</p>
                       <p className="text-xs font-bold text-gray-500 mt-0.5">🎾 {session.level || '不限'}</p>
-                      <a href={`https://www.google.com/maps/search/?api=1&query=${session.city || ''}${session.district || ''}${session.title}`} target="_blank" rel="noreferrer" className="text-xs font-bold text-blue-600 mt-1 flex items-center gap-1"><MapPin size={12} /> {session.city || ''} {session.district || ''}</a>
+                      <a href={`https://www.google.com/maps/search/?api=1&query=${session.city || ''}${session.district || ''}${session.address || ''}${session.title}`} target="_blank" rel="noreferrer" className="text-xs font-bold text-blue-600 mt-1 flex items-center gap-1 line-clamp-1"><MapPin size={12} /> {session.city || ''} {session.district || ''} {session.address || ''}</a>
                       <div className="text-xs text-gray-500 mt-1.5 flex items-center gap-2">
                         <span className="font-bold text-gray-700">{regCount} / {session.max_players} 人</span>
                         <span>|</span><span>${session.price}</span>
@@ -290,7 +280,6 @@ export default function FindGamesPage() {
         </>
       )}
 
-      {/* 付款回報與候補成功 Modal */}
       {bookingResult && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-4">
           <div className="bg-white rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl">

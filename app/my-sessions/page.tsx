@@ -2,9 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { supabase } from "../../lib/supabase";
-import { Bell, Plus, RotateCcw, CheckCircle2, XCircle, Users, ChevronLeft, Copy, Check, Edit3, Trash2, MapPin, Share } from "lucide-react";
+import { Bell, Plus, RotateCcw, CheckCircle2, XCircle, Users, ChevronLeft, Copy, Check, Edit3, Trash2, MapPin, Share, Undo2 } from "lucide-react";
 
-// 台灣縣市區域資料 (精簡版)
 const TAIWAN_CITIES: Record<string, string[]> = {
     "台北市": ["中正區", "大同區", "中山區", "松山區", "大安區", "萬華區", "信義區", "士林區", "北投區", "內湖區", "南港區", "文山區"],
     "新北市": ["板橋區", "新莊區", "中和區", "永和區", "土城區", "樹林區", "三峽區", "鶯歌區", "三重區", "蘆洲區", "五股區", "泰山區", "林口區", "淡水區", "汐止區", "新店區"],
@@ -32,10 +31,10 @@ export default function MySessionsPage() {
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
-    // 表單狀態
     const [formCity, setFormCity] = useState("台中市");
     const [formDistrict, setFormDistrict] = useState("龍井區");
-    const [formLocation, setFormLocation] = useState("龍井運動中心");
+    const [formLocation, setFormLocation] = useState("");
+    const [formAddress, setFormAddress] = useState(""); // 新增詳細地址
     const [formDate, setFormDate] = useState("");
     const [formStartTime, setFormStartTime] = useState("19:00");
     const [formEndTime, setFormEndTime] = useState("21:00");
@@ -48,6 +47,7 @@ export default function MySessionsPage() {
     const [formPaymentLink, setFormPaymentLink] = useState("");
     const [formBankAccount, setFormBankAccount] = useState("");
     const [formCancelRule, setFormCancelRule] = useState("開打前 24 小時內取消不予退費");
+
     const [payingRecord, setPayingRecord] = useState<any | null>(null);
     const [payMethod, setPayMethod] = useState<"line" | "bank">("bank");
     const [payLast5, setPayLast5] = useState("");
@@ -87,6 +87,12 @@ export default function MySessionsPage() {
         return `${d.getMonth() + 1}/${d.getDate()} (${days[d.getDay()]})`;
     };
 
+    const formatDateTime = (iso: string) => {
+        if (!iso) return "";
+        const d = new Date(iso);
+        return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    };
+
     const getCourtLabel = (session: any) => {
         if (session.courts?.name) return session.courts.name;
         if (session.notes && session.notes.includes("【場地")) {
@@ -103,7 +109,8 @@ export default function MySessionsPage() {
                 const t = JSON.parse(savedLast);
                 setFormCity(t.city || "台中市");
                 setFormDistrict(t.district || "龍井區");
-                setFormLocation(t.location || "龍井運動中心");
+                setFormLocation(t.location || "");
+                setFormAddress(t.address || "");
                 setFormStartTime(t.startTime || "19:00");
                 setFormEndTime(t.endTime || "21:00");
                 setFormCourt(t.court || "場地 1");
@@ -135,6 +142,7 @@ export default function MySessionsPage() {
                 title: formLocation.trim(),
                 city: formCity,
                 district: formDistrict,
+                address: formAddress.trim() || null,
                 session_date: formDate,
                 start_time: `${formStartTime}:00`,
                 end_time: `${formEndTime}:00`,
@@ -159,13 +167,13 @@ export default function MySessionsPage() {
                     setHostedIds(nextHosted);
                     localStorage.setItem("picklego_hosted_sessions", JSON.stringify(nextHosted));
                 }
-                localStorage.setItem("picklego_last_session_template", JSON.stringify({ city: formCity, district: formDistrict, location: formLocation.trim(), startTime: formStartTime, endTime: formEndTime, court: formCourt, level: formLevel, maxPlayers: Number(formMaxPlayers), waitlist: Number(formWaitlist), price: Number(formPrice), paymentMethod: formPaymentMethod, paymentLink: formPaymentLink, bankAccount: formBankAccount, cancelRule: formCancelRule }));
+                localStorage.setItem("picklego_last_session_template", JSON.stringify({ city: formCity, district: formDistrict, location: formLocation.trim(), address: formAddress.trim(), startTime: formStartTime, endTime: formEndTime, court: formCourt, level: formLevel, maxPlayers: Number(formMaxPlayers), waitlist: Number(formWaitlist), price: Number(formPrice), paymentMethod: formPaymentMethod, paymentLink: formPaymentLink, bankAccount: formBankAccount, cancelRule: formCancelRule }));
                 alert("✅ 臨打活動已發布！");
             }
             setShowCreateModal(false);
             fetchAllData();
         } catch (err: any) {
-            alert("儲存失敗：" + (err.message || "請檢查欄位。請確認 Supabase 已新增 city 與 district 欄位。"));
+            alert("儲存失敗：" + err.message);
         } finally {
             setIsSubmitting(false);
         }
@@ -176,6 +184,15 @@ export default function MySessionsPage() {
             await supabase.from("open_play_players").update({ payment_status: "paid", admin_confirm_time: new Date().toISOString() }).eq("id", player.id);
             fetchAllData();
         } catch (err: any) { alert("核帳失敗：" + err.message); }
+    };
+
+    // 新增：復原核帳功能
+    const handleUndoPayment = async (player: any) => {
+        if (!confirm(`確定要取消核帳「${player.display_name || player.line_nickname}」，將狀態退回待核帳嗎？`)) return;
+        try {
+            await supabase.from("open_play_players").update({ payment_status: "reported", admin_confirm_time: null }).eq("id", player.id);
+            fetchAllData();
+        } catch (err: any) { alert("操作失敗：" + err.message); }
     };
 
     const handleCancelPlayer = async (player: any, session: any) => {
@@ -207,7 +224,7 @@ export default function MySessionsPage() {
     const handleShare = (e: React.MouseEvent, session: any) => {
         e.stopPropagation();
         const url = `${window.location.origin}/?session=${session.id}`;
-        const locStr = `${session.city || ''}${session.district || ''} ${session.title}`;
+        const locStr = `${session.city || ''}${session.district || ''} ${session.address || ''} ${session.title}`;
         const text = `🎾 PickleGo 臨打邀請\n【時間】${formatDateWithDay(session.session_date)} ${session.start_time?.slice(0, 5)}-${session.end_time?.slice(0, 5)}\n【地點】${locStr} (${getCourtLabel(session)})\n【程度】${session.level || '不限'}\n【費用】$${session.price || 0} / 人\n👇 點擊連結快速報名：\n${url}`;
         navigator.clipboard.writeText(text);
         alert("✅ 報名資訊與專屬網址已複製，可直接貼上 LINE 群組！");
@@ -242,7 +259,19 @@ export default function MySessionsPage() {
                     <button onClick={() => setManagingSessionId(null)} className="flex items-center gap-1 text-sm font-bold text-gray-700"><ChevronLeft size={18} /> 返回</button>
                     <span className="font-extrabold text-sm text-gray-900">單一場次管理</span>
                     <button onClick={() => {
-                        setFormCity(managingSession.city || "台中市"); setFormDistrict(managingSession.district || "龍井區"); setFormLocation(managingSession.title || ""); setFormDate(managingSession.session_date); setFormStartTime(managingSession.start_time?.slice(0, 5)); setFormEndTime(managingSession.end_time?.slice(0, 5)); setFormCourt(getCourtLabel(managingSession)); setFormMaxPlayers(managingSession.max_players || 16); setFormPrice(managingSession.price ?? 150); setFormLevel(managingSession.level || "不限"); setFormWaitlist(managingSession.max_waitlist || 2); setIsEditingSession(true); setShowCreateModal(true);
+                        setFormCity(managingSession.city || "台中市");
+                        setFormDistrict(managingSession.district || "龍井區");
+                        setFormLocation(managingSession.title || "");
+                        setFormAddress(managingSession.address || "");
+                        setFormDate(managingSession.session_date);
+                        setFormStartTime(managingSession.start_time?.slice(0, 5));
+                        setFormEndTime(managingSession.end_time?.slice(0, 5));
+                        setFormCourt(getCourtLabel(managingSession));
+                        setFormMaxPlayers(managingSession.max_players || 16);
+                        setFormPrice(managingSession.price ?? 150);
+                        setFormLevel(managingSession.level || "不限");
+                        setFormWaitlist(managingSession.max_waitlist || 2);
+                        setIsEditingSession(true); setShowCreateModal(true);
                     }} className="text-xs font-bold text-green-700 flex items-center gap-1"><Edit3 size={14} /> 修改</button>
                 </div>
                 <div className="p-4 space-y-4">
@@ -278,12 +307,17 @@ export default function MySessionsPage() {
                                                 <span className="font-extrabold text-sm text-gray-900 truncate">{player.display_name || player.line_nickname || "球友"}</span>
                                                 <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full border ${badgeClass}`}>{lightBadge}</span>
                                             </div>
-                                            <p className="text-xs text-gray-500 mt-1">{player.payment_account_last5 ? `對帳碼：${player.payment_account_last5}` : "尚未回報付款"}</p>
+                                            <div className="text-xs text-gray-500 mt-1.5 space-y-0.5 font-medium">
+                                                <p className="flex items-center gap-1.5 text-gray-600">📞 {player.phone || "未提供電話"}</p>
+                                                {player.payment_account_last5 && <p>💰 對帳碼：<span className="font-bold text-gray-800">{player.payment_account_last5}</span></p>}
+                                                {player.payment_report_time && <p>🕒 回報：{formatDateTime(player.payment_report_time)}</p>}
+                                            </div>
                                         </div>
                                         {player.status !== "cancelled" && (
                                             <div className="flex items-center gap-1.5 shrink-0">
                                                 {!isPaid && player.status === "registered" && (<button onClick={() => handleConfirmPayment(player)} className="bg-green-700 text-white text-xs font-bold px-3 py-1.5 rounded-xl flex items-center gap-1"><Check size={13} /> 核帳</button>)}
-                                                <button onClick={() => handleCancelPlayer(player, managingSession)} className="bg-gray-100 text-gray-500 p-1.5 rounded-xl"><Trash2 size={15} /></button>
+                                                {isPaid && player.status === "registered" && (<button onClick={() => handleUndoPayment(player)} className="bg-gray-100 text-gray-500 p-1.5 rounded-xl hover:bg-gray-200 transition" title="取消核帳"><Undo2 size={15} /></button>)}
+                                                <button onClick={() => handleCancelPlayer(player, managingSession)} className="bg-gray-100 text-gray-500 p-1.5 rounded-xl hover:bg-red-50 hover:text-red-500 transition"><Trash2 size={15} /></button>
                                             </div>
                                         )}
                                     </div>
@@ -310,7 +344,7 @@ export default function MySessionsPage() {
                 {activeTab === "hosting" ? (
                     <div className="space-y-4">
                         <div className="space-y-2">
-                            <button onClick={() => { setIsEditingSession(false); setShowCreateModal(true); }} className="w-full bg-green-700 text-white font-extrabold py-3 rounded-xl text-sm flex items-center justify-center gap-1.5 shadow-xs"><Plus size={18} strokeWidth={2.5} /> 開一場臨打</button>
+                            <button onClick={() => { setIsEditingSession(false); setFormLocation(""); setFormAddress(""); setShowCreateModal(true); }} className="w-full bg-green-700 text-white font-extrabold py-3 rounded-xl text-sm flex items-center justify-center gap-1.5 shadow-xs"><Plus size={18} strokeWidth={2.5} /> 開一場臨打</button>
                             <button onClick={handleApplyLastSession} className="w-full bg-white text-green-800 border border-green-700 font-extrabold py-2.5 rounded-xl text-xs flex items-center justify-center gap-1.5"><RotateCcw size={15} strokeWidth={2.5} /> 套用上一次</button>
                         </div>
                         <div>
@@ -330,7 +364,7 @@ export default function MySessionsPage() {
                                         else if (regPlayers.length > 0 && regPlayers.every((p: any) => p.payment_status === "paid" || p.payment_status === "confirmed")) { actionBadge = "收款已確認"; badgeStyle = "bg-green-100 text-green-800"; iconType = "green"; }
 
                                         return (
-                                            <div key={session.id} onClick={() => setManagingSessionId(session.id)} className="bg-white rounded-2xl p-4 border border-gray-100 shadow-2xs flex items-center justify-between gap-3 cursor-pointer">
+                                            <div key={session.id} onClick={() => setManagingSessionId(session.id)} className="bg-white rounded-2xl p-4 border border-gray-100 shadow-2xs flex items-center justify-between gap-3 cursor-pointer hover:border-green-300 transition">
                                                 <div className="flex items-start gap-3 min-w-0 flex-1">
                                                     <div className="mt-1 shrink-0">
                                                         {iconType === "yellow" && (<div className="w-6 h-6 rounded-full bg-amber-400 flex items-center justify-center"><div className="w-2 h-2 rounded-full bg-white" /></div>)}
@@ -366,7 +400,7 @@ export default function MySessionsPage() {
                                             <div className="min-w-0 flex-1">
                                                 <p className="font-extrabold text-[15px] text-gray-900">{formatDateWithDay(session.session_date)} {session.start_time?.slice(0, 5)}–{session.end_time?.slice(0, 5)}</p>
                                                 <p className="text-sm font-medium text-gray-700 mt-0.5 truncate">{session.title}</p>
-                                                <a href={`https://www.google.com/maps/search/?api=1&query=${session.city || ''}${session.district || ''}${session.title}`} target="_blank" rel="noreferrer" className="text-xs font-bold text-blue-600 mt-1 flex items-center gap-1"><MapPin size={12} /> Map</a>
+                                                <a href={`https://www.google.com/maps/search/?api=1&query=${session.city || ''}${session.district || ''}${session.address || ''}${session.title}`} target="_blank" rel="noreferrer" className="text-xs font-bold text-blue-600 mt-1 flex items-center gap-1"><MapPin size={12} /> Map導航</a>
                                             </div>
                                             <div className="flex flex-col items-end gap-1 shrink-0">
                                                 {player.status === "cancelled" ? (<span className="px-3 py-1 rounded-full text-xs font-extrabold bg-gray-100 text-gray-500">已取消</span>) : player.status === "waitlisted" ? (<span className="px-3 py-1 rounded-full text-xs font-extrabold bg-red-100 text-red-700">候補中</span>) : (
@@ -390,17 +424,18 @@ export default function MySessionsPage() {
                     <div className="bg-white rounded-2xl w-full max-w-sm max-h-[85dvh] overflow-y-auto p-5 shadow-2xl">
                         <h2 className="text-lg font-extrabold text-gray-900 mb-3">{isEditingSession ? "修改臨打活動" : "開一場臨打"}</h2>
                         <form onSubmit={handleSaveSession} className="space-y-3 text-xs">
-                            <div>
-                                <label className="font-bold text-gray-700 block mb-1">1. 地點 (必填)</label>
-                                <div className="grid grid-cols-2 gap-2 mb-2">
-                                    <select value={formCity} onChange={(e) => { setFormCity(e.target.value); setFormDistrict(TAIWAN_CITIES[e.target.value]?.[0] || ""); }} className="bg-gray-50 border border-gray-200 rounded-xl px-2 py-2">
+                            <div className="space-y-2">
+                                <label className="font-bold text-gray-700 block">1. 地點 (必填)</label>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <select value={formCity} onChange={(e) => { setFormCity(e.target.value); setFormDistrict(TAIWAN_CITIES[e.target.value]?.[0] || ""); }} className="bg-gray-50 border border-gray-200 rounded-xl px-2 py-2 text-gray-900">
                                         {Object.keys(TAIWAN_CITIES).map(city => <option key={city} value={city}>{city}</option>)}
                                     </select>
-                                    <select value={formDistrict} onChange={(e) => setFormDistrict(e.target.value)} className="bg-gray-50 border border-gray-200 rounded-xl px-2 py-2">
+                                    <select value={formDistrict} onChange={(e) => setFormDistrict(e.target.value)} className="bg-gray-50 border border-gray-200 rounded-xl px-2 py-2 text-gray-900">
                                         {(TAIWAN_CITIES[formCity] || []).map(dist => <option key={dist} value={dist}>{dist}</option>)}
                                     </select>
                                 </div>
                                 <input type="text" required placeholder="場館名稱 (如: 龍井運動中心)" value={formLocation} onChange={(e) => setFormLocation(e.target.value)} className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-gray-900" />
+                                <input type="text" placeholder="詳細地址 (選填，助於精準導航)" value={formAddress} onChange={(e) => setFormAddress(e.target.value)} className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-gray-900" />
                             </div>
                             <div className="grid grid-cols-3 gap-2">
                                 <div><label className="font-bold text-gray-700 block mb-1">2. 日期</label><input type="date" required value={formDate} onChange={(e) => setFormDate(e.target.value)} className="w-full bg-gray-50 border border-gray-200 rounded-xl px-1 py-2 text-gray-900" /></div>
@@ -432,7 +467,7 @@ export default function MySessionsPage() {
                             <div><label className="font-bold text-gray-700 block mb-1">8. 每人費用 ($)</label><input type="number" min={0} value={formPrice} onChange={(e) => setFormPrice(Number(e.target.value))} className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-gray-900" /></div>
                             <div className="flex gap-2 pt-2">
                                 <button type="button" onClick={() => setShowCreateModal(false)} className="flex-1 bg-gray-100 text-gray-600 font-bold py-2.5 rounded-xl">取消</button>
-                                <button type="submit" disabled={isSubmitting} className="flex-[2] bg-green-700 text-white font-bold py-2.5 rounded-xl disabled:opacity-50">{isSubmitting ? "發布中..." : "確認發布"}</button>
+                                <button type="submit" disabled={isSubmitting} className="flex-[2] bg-green-700 text-white font-bold py-2.5 rounded-xl disabled:opacity-50">{isSubmitting ? "儲存中..." : (isEditingSession ? "確認修改" : "確認發布")}</button>
                             </div>
                         </form>
                     </div>
