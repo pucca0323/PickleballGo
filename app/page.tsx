@@ -7,7 +7,6 @@ import {
   Clock,
   AlertCircle,
   SlidersHorizontal,
-  Bell,
   Users,
   X,
   MapPin,
@@ -25,7 +24,6 @@ export default function FindGamesPage() {
   const [sessions, setSessions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // 確保使用標準的 TypeScript 聯集型別符號 |
   const [selectedSession, setSelectedSession] = useState<any | null>(null);
   const [phone, setPhone] = useState("");
   const [lineNickname, setLineNickname] = useState("");
@@ -160,11 +158,21 @@ export default function FindGamesPage() {
   const getCourtLabel = (session: any) => {
     if (session.court_name) return session.court_name;
     if (session.courts?.name) return session.courts.name;
-    if (session.notes && session.notes.includes("【")) {
-      const match = session.notes.match(/【(.*?)】/);
-      if (match) return match[1];
-    }
-    return "";
+    return "1號場地";
+  };
+
+  const getCancelLimitDisplay = (session: any) => {
+    const hrs = session.cancel_limit_hours;
+    if (hrs === 0) return "報名後不可取消";
+    if (hrs !== null && hrs !== undefined && hrs > 0) return `開打前 ${hrs}h 不可取消`;
+    return "不限取消";
+  };
+
+  const parseSessionPaymentInfo = (session: any) => {
+    try {
+      if (session.payment_info) return JSON.parse(session.payment_info);
+    } catch (e) { }
+    return { bank: "", link: "" };
   };
 
   const handleBooking = async (e: React.FormEvent, session: any) => {
@@ -198,6 +206,18 @@ export default function FindGamesPage() {
         return;
       }
 
+      // 強制雙重確保寫入電話與暱稱到 open_play_players
+      if (data.booking_id) {
+        await supabase
+          .from("open_play_players")
+          .update({
+            phone: phone.trim(),
+            line_nickname: lineNickname.trim(),
+            display_name: lineNickname.trim(),
+          })
+          .eq("id", data.booking_id);
+      }
+
       const updatedMap = { ...myJoinedMap, [session.id]: data.status };
       setMyJoinedMap(updatedMap);
       localStorage.setItem("picklego_joined_sessions", JSON.stringify(updatedMap));
@@ -220,30 +240,32 @@ export default function FindGamesPage() {
   const handleReportPayment = async () => {
     if (!selectedPayment) return alert("請先選擇付款方式！");
     if (selectedPayment === "bank" && !/^[0-9]{5}$/.test(last5.trim()))
-      return alert("轉帳請填寫帳號末五碼！");
+      return alert("轉帳請填寫完整的 5 碼帳號末五碼！");
 
     setIsSubmitting(true);
     try {
-      const finalLast5 = selectedPayment === "bank" ? last5.trim() : (selectedPayment === "cash" ? "現場付款" : "TWQR");
-      const { data, error } = await supabase.rpc("user_report_open_play_payment", {
-        p_player_id: createdPlayerId,
-        p_phone: phone.trim(),
-        p_method: selectedPayment,
-        p_line_nickname: lineNickname.trim(),
-        p_last5: finalLast5,
-        p_display_name: lineNickname.trim(),
-      });
+      const finalLast5 =
+        selectedPayment === "bank"
+          ? last5.trim()
+          : selectedPayment === "cash"
+            ? "現場付款"
+            : "TWQR";
+
+      const { error } = await supabase
+        .from("open_play_players")
+        .update({
+          phone: phone.trim(),
+          line_nickname: lineNickname.trim(),
+          display_name: lineNickname.trim(),
+          payment_method: selectedPayment,
+          payment_account_last5: finalLast5,
+          payment_status: "reported",
+          payment_report_time: new Date().toISOString(),
+        })
+        .eq("id", createdPlayerId);
+
       if (error) throw error;
-      if (!data.success) {
-        alert(data.message);
-        if (data.message.includes("逾時") || data.message.includes("失效")) {
-          setBookingResult(null);
-          setTimeLeft(null);
-          fetchData();
-        }
-        return;
-      }
-      alert("✅ 付款回報已送出！名額已為您保留。");
+      alert("✅ 付款方式回報已送出！可隨時至「我的臨打 > 報名資訊」查看狀態。");
       setBookingResult(null);
       setTimeLeft(null);
       fetchData();
@@ -257,9 +279,11 @@ export default function FindGamesPage() {
   const handleShare = (e: React.MouseEvent, session: any) => {
     e.stopPropagation();
     const url = `${window.location.origin}/?session=${session.id}`;
-    const courtText = getCourtLabel(session) ? `· ${getCourtLabel(session)}` : "";
-    const locStr = `${session.city || ""}${session.district || ""} ${session.address || ""} ${session.title} ${courtText}`.trim();
-    const text = `🎾 PickleGo 臨打邀請\n【時間】${formatDateWithDay(session.session_date)} ${session.start_time?.slice(0, 5)}-${session.end_time?.slice(0, 5)}\n【地點】${locStr}\n【程度】${session.level || "不限"}\n【費用】$${session.price || 0} / 人\n👇 點擊網址快速報名：\n${url}`;
+    const courtText = getCourtLabel(session);
+    const locStr = `${session.city || ""}${session.district || ""} ${session.address || ""} ${session.title} (${courtText})`.trim();
+    const limitStr = getCancelLimitDisplay(session);
+    const noteStr = session.notes ? `\n【備註】${session.notes}` : "";
+    const text = `🎾 PickleGo 臨打邀請\n【時間】${formatDateWithDay(session.session_date)} ${session.start_time?.slice(0, 5)}-${session.end_time?.slice(0, 5)}\n【地點】${locStr}\n【程度】${session.level || "不限"}\n【費用】$${session.price || 0} / 人\n【取消規範】${limitStr}${noteStr}\n👇 點擊網址快速報名：\n${url}`;
     navigator.clipboard.writeText(text);
     alert("✅ 報名資訊與網址已複製！");
   };
@@ -403,10 +427,7 @@ export default function FindGamesPage() {
             const courtText = getCourtLabel(session);
             const fullAddress = `${session.city || ""}${session.district || ""}${session.address || ""}`.trim();
             const mapQuery = `${fullAddress} ${session.title || ""}`.trim();
-
-            let limitText = "取消無時限";
-            if (session.cancel_limit_hours === 0) limitText = "報名後不可取消";
-            else if (session.cancel_limit_hours > 0) limitText = `開打前 ${session.cancel_limit_hours}h 不可取消`;
+            const limitText = getCancelLimitDisplay(session);
 
             return (
               <div
@@ -440,10 +461,10 @@ export default function FindGamesPage() {
                         {session.start_time?.slice(0, 5)}–{session.end_time?.slice(0, 5)}
                       </p>
                       <p className="text-sm font-bold text-gray-800 mt-0.5 truncate">
-                        {session.title} {courtText && `· ${courtText}`}
+                        {session.title} · <span className="text-green-700">{courtText}</span>
                       </p>
                       <p className="text-xs font-bold text-gray-500 mt-0.5">
-                        🎾 {session.level || "不限"} | 🛡️ {limitText}
+                        🎾 程度：{session.level || "不限"} | 🛡️ {limitText}
                       </p>
                       <a
                         href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapQuery)}`}
@@ -453,7 +474,7 @@ export default function FindGamesPage() {
                       >
                         <MapPin size={12} className="shrink-0" />
                         <span className="truncate">
-                          {fullAddress || session.title} (導航)
+                          {fullAddress || session.title} (點擊導航)
                         </span>
                       </a>
                       <div className="text-xs text-gray-500 mt-1.5 flex items-center gap-2">
@@ -486,9 +507,10 @@ export default function FindGamesPage() {
                   </div>
                 </div>
 
-                {session.additional_notes && (
-                  <div className="mt-3 bg-amber-50/50 p-2.5 rounded-lg text-xs text-gray-700 border border-amber-100">
-                    <span className="font-bold">📝 備註：</span>{session.additional_notes}
+                {session.notes && (
+                  <div className="mt-3 bg-amber-50/70 p-2.5 rounded-xl text-xs text-gray-700 border border-amber-100">
+                    <span className="font-bold text-amber-900">📝 備註：</span>
+                    {session.notes}
                   </div>
                 )}
 
@@ -655,7 +677,7 @@ export default function FindGamesPage() {
                     ) : (
                       <>
                         <p className="text-xs font-bold text-gray-700 flex items-center justify-center gap-1 mb-0.5">
-                          <Clock size={14} /> 請於限時內完成付款回報
+                          <Clock size={14} /> 請於限時內選擇付款方式並回報
                         </p>
                         <p className="text-2xl font-black font-mono text-red-600">
                           {timeLeft !== null ? formatTime(timeLeft) : "10:00"}
@@ -668,69 +690,95 @@ export default function FindGamesPage() {
                       <div className="grid grid-cols-3 gap-2">
                         <button
                           onClick={() => setSelectedPayment("bank")}
-                          className={`py-2 rounded-xl font-bold text-[11px] border ${selectedPayment === "bank"
-                              ? "border-gray-800 bg-gray-100 text-gray-900"
-                              : "border-gray-200 text-gray-600"
+                          className={`py-2.5 rounded-xl font-bold text-xs border ${selectedPayment === "bank"
+                              ? "border-gray-900 bg-gray-900 text-white"
+                              : "border-gray-200 text-gray-600 bg-gray-50"
                             }`}
                         >
                           銀行轉帳
                         </button>
                         <button
                           onClick={() => setSelectedPayment("line")}
-                          className={`py-2 rounded-xl font-bold text-[11px] border ${selectedPayment === "line"
-                              ? "border-[#06C755] bg-[#06C755]/10 text-[#06C755]"
-                              : "border-gray-200 text-gray-600"
+                          className={`py-2.5 rounded-xl font-bold text-xs border ${selectedPayment === "line"
+                              ? "border-[#06C755] bg-[#06C755] text-white"
+                              : "border-gray-200 text-gray-600 bg-gray-50"
                             }`}
                         >
-                          TWQR
+                          TWQR / 付款碼
                         </button>
                         <button
                           onClick={() => setSelectedPayment("cash")}
-                          className={`py-2 rounded-xl font-bold text-[11px] border ${selectedPayment === "cash"
-                              ? "border-amber-600 bg-amber-50 text-amber-700"
-                              : "border-gray-200 text-gray-600"
+                          className={`py-2.5 rounded-xl font-bold text-xs border ${selectedPayment === "cash"
+                              ? "border-amber-600 bg-amber-600 text-white"
+                              : "border-gray-200 text-gray-600 bg-gray-50"
                             }`}
                         >
                           現場付款
                         </button>
                       </div>
 
-                      {selectedPayment && (
-                        <div className="bg-gray-50 border border-gray-200 p-3.5 rounded-xl space-y-3">
-                          {selectedPayment === "bank" ? (
-                            <div>
-                              <label className="block text-xs font-bold text-gray-700 mb-1">
-                                轉出帳號末五碼（必填）
-                              </label>
-                              <input
-                                type="text"
-                                inputMode="numeric"
-                                maxLength={5}
-                                className="w-full bg-white border border-gray-300 rounded-lg p-2.5 text-xs mb-2.5"
-                                value={last5}
-                                onChange={(e) =>
-                                  setLast5(e.target.value.replace(/[^0-9]/g, "").slice(0, 5))
-                                }
-                              />
-                            </div>
-                          ) : selectedPayment === "cash" ? (
-                            <p className="text-xs text-gray-600 font-bold text-center py-2">
-                              屆時請於活動現場將現金繳交給主辦人。
-                            </p>
-                          ) : (
-                            <p className="text-xs text-gray-600 font-bold text-center py-2">
-                              點擊下方按鈕，系統將自動記錄回報時間以利開團者對帳。
-                            </p>
-                          )}
-                          <button
-                            onClick={handleReportPayment}
-                            disabled={isSubmitting}
-                            className="w-full bg-green-700 text-white font-bold py-2.5 rounded-xl text-xs disabled:opacity-50"
-                          >
-                            {isSubmitting ? "送出中..." : (selectedPayment === "cash" ? "確認選擇現場付款" : "我已完成付款")}
-                          </button>
-                        </div>
-                      )}
+                      {selectedPayment && (() => {
+                        const payInfo = parseSessionPaymentInfo(bookingResult);
+                        return (
+                          <div className="bg-gray-50 border border-gray-200 p-3.5 rounded-xl space-y-3 text-xs">
+                            {selectedPayment === "bank" ? (
+                              <div>
+                                {payInfo.bank && (
+                                  <div className="bg-white p-2.5 rounded-lg border border-gray-200 mb-2.5">
+                                    <p className="text-gray-500 font-bold mb-0.5">主辦人收款帳號：</p>
+                                    <p className="font-extrabold text-gray-900 select-all">{payInfo.bank}</p>
+                                  </div>
+                                )}
+                                <label className="block font-bold text-gray-700 mb-1">
+                                  轉出帳號末五碼（必填）
+                                </label>
+                                <input
+                                  type="text"
+                                  inputMode="numeric"
+                                  maxLength={5}
+                                  placeholder="例如：12345"
+                                  className="w-full bg-white border border-gray-300 rounded-lg p-2.5 text-xs mb-1 font-bold text-gray-900"
+                                  value={last5}
+                                  onChange={(e) =>
+                                    setLast5(e.target.value.replace(/[^0-9]/g, "").slice(0, 5))
+                                  }
+                                />
+                              </div>
+                            ) : selectedPayment === "cash" ? (
+                              <p className="text-gray-700 font-bold text-center py-2">
+                                💵 屆時請於活動現場將現金 (${bookingResult.price}) 繳交給主辦人。
+                              </p>
+                            ) : (
+                              <div className="space-y-2 text-center py-1">
+                                {payInfo.link && (
+                                  <a
+                                    href={payInfo.link}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="inline-block w-full bg-[#06C755] text-white font-bold py-2 rounded-lg"
+                                  >
+                                    點擊開啟主辦人 TWQR / 收款碼
+                                  </a>
+                                )}
+                                <p className="text-gray-600 font-bold">
+                                  點擊下方按鈕，系統將自動記錄回報時間與手機末三碼以利開團者對帳。
+                                </p>
+                              </div>
+                            )}
+                            <button
+                              onClick={handleReportPayment}
+                              disabled={isSubmitting}
+                              className="w-full bg-green-700 text-white font-bold py-2.5 rounded-xl text-xs disabled:opacity-50"
+                            >
+                              {isSubmitting
+                                ? "送出中..."
+                                : selectedPayment === "cash"
+                                  ? "確認選擇現場付款"
+                                  : "我已完成付款，送出回報"}
+                            </button>
+                          </div>
+                        );
+                      })()}
                     </>
                   )}
                   <button
@@ -740,7 +788,7 @@ export default function FindGamesPage() {
                     }}
                     className="w-full text-gray-400 text-xs font-bold py-1.5"
                   >
-                    稍後至「我的臨打」處理
+                    稍後至「我的臨打 &gt; 報名資訊」補付款回報
                   </button>
                 </div>
               </>
