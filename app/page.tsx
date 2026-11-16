@@ -206,7 +206,6 @@ export default function FindGamesPage() {
         return;
       }
 
-      // 強制雙重確保寫入電話與暱稱到 open_play_players
       if (data.booking_id) {
         await supabase
           .from("open_play_players")
@@ -244,6 +243,7 @@ export default function FindGamesPage() {
 
     setIsSubmitting(true);
     try {
+      // 強制設定 TWQR 時的 last5 值，避免未回報
       const finalLast5 =
         selectedPayment === "bank"
           ? last5.trim()
@@ -348,8 +348,8 @@ export default function FindGamesPage() {
                   setSelectedSession(null);
                 }}
                 className={`relative shrink-0 px-4 py-1.5 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 ${isSelected
-                    ? "bg-green-700 text-white shadow-2xs"
-                    : "bg-gray-100 text-gray-600"
+                  ? "bg-green-700 text-white shadow-2xs"
+                  : "bg-gray-100 text-gray-600"
                   }`}
               >
                 <span>{d.display}</span>
@@ -587,8 +587,8 @@ export default function FindGamesPage() {
                       key={r}
                       onClick={() => setFilterRegion(r)}
                       className={`py-2 rounded-xl text-xs font-bold border transition ${filterRegion === r
-                          ? "bg-green-700 text-white border-green-700"
-                          : "bg-white text-gray-600 border-gray-200"
+                        ? "bg-green-700 text-white border-green-700"
+                        : "bg-white text-gray-600 border-gray-200"
                         }`}
                     >
                       {r}
@@ -604,8 +604,8 @@ export default function FindGamesPage() {
                       key={t}
                       onClick={() => setFilterTime(t)}
                       className={`py-2 rounded-xl text-xs font-bold border transition ${filterTime === t
-                          ? "bg-green-700 text-white border-green-700"
-                          : "bg-white text-gray-600 border-gray-200"
+                        ? "bg-green-700 text-white border-green-700"
+                        : "bg-white text-gray-600 border-gray-200"
                         }`}
                     >
                       {t}
@@ -621,8 +621,8 @@ export default function FindGamesPage() {
                       key={l}
                       onClick={() => setFilterLevel(l)}
                       className={`py-2 rounded-xl text-xs font-bold border transition ${filterLevel === l
-                          ? "bg-green-700 text-white border-green-700"
-                          : "bg-white text-gray-600 border-gray-200"
+                        ? "bg-green-700 text-white border-green-700"
+                        : "bg-white text-gray-600 border-gray-200"
                         }`}
                     >
                       {l}
@@ -691,8 +691,8 @@ export default function FindGamesPage() {
                         <button
                           onClick={() => setSelectedPayment("bank")}
                           className={`py-2.5 rounded-xl font-bold text-xs border ${selectedPayment === "bank"
-                              ? "border-gray-900 bg-gray-900 text-white"
-                              : "border-gray-200 text-gray-600 bg-gray-50"
+                            ? "border-gray-900 bg-gray-900 text-white"
+                            : "border-gray-200 text-gray-600 bg-gray-50"
                             }`}
                         >
                           銀行轉帳
@@ -700,8 +700,8 @@ export default function FindGamesPage() {
                         <button
                           onClick={() => setSelectedPayment("line")}
                           className={`py-2.5 rounded-xl font-bold text-xs border ${selectedPayment === "line"
-                              ? "border-[#06C755] bg-[#06C755] text-white"
-                              : "border-gray-200 text-gray-600 bg-gray-50"
+                            ? "border-[#06C755] bg-[#06C755] text-white"
+                            : "border-gray-200 text-gray-600 bg-gray-50"
                             }`}
                         >
                           TWQR / 付款碼
@@ -709,8 +709,8 @@ export default function FindGamesPage() {
                         <button
                           onClick={() => setSelectedPayment("cash")}
                           className={`py-2.5 rounded-xl font-bold text-xs border ${selectedPayment === "cash"
-                              ? "border-amber-600 bg-amber-600 text-white"
-                              : "border-gray-200 text-gray-600 bg-gray-50"
+                            ? "border-amber-600 bg-amber-600 text-white"
+                            : "border-gray-200 text-gray-600 bg-gray-50"
                             }`}
                         >
                           現場付款

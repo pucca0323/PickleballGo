@@ -63,7 +63,7 @@ export default function MySessionsPage() {
     const [formWaitlist, setFormWaitlist] = useState(2);
     const [formPrice, setFormPrice] = useState(150);
 
-    // 取消限制狀態：'unlimited' (不限: -1) | 'no_cancel' (不可取消: 0) | 'custom' (自訂小時: >0)
+    // 取消限制狀態
     const [cancelLimitMode, setCancelLimitMode] = useState<"unlimited" | "no_cancel" | "custom">("custom");
     const [customCancelHours, setCustomCancelHours] = useState<number>(24);
 
@@ -160,7 +160,6 @@ export default function MySessionsPage() {
         return { bank: "", link: "" };
     };
 
-    // 套用上一次開團範本
     const handleApplyLastSession = () => {
         try {
             const savedLast = localStorage.getItem("picklego_last_session_template");
@@ -192,7 +191,6 @@ export default function MySessionsPage() {
         setShowCreateModal(true);
     };
 
-    // 儲存或修改開團
     const handleSaveSession = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!formLocation.trim() || !formDate || !formCity || !formDistrict) {
@@ -292,7 +290,6 @@ export default function MySessionsPage() {
         }
     };
 
-    // 主辦人核帳
     const handleConfirmPayment = async (player: any) => {
         try {
             await supabase
@@ -305,7 +302,6 @@ export default function MySessionsPage() {
         }
     };
 
-    // 主辦人復原核帳
     const handleUndoPayment = async (player: any) => {
         if (!confirm(`確定要將「${player.display_name || player.line_nickname}」退回待核帳狀態嗎？`)) return;
         try {
@@ -319,7 +315,6 @@ export default function MySessionsPage() {
         }
     };
 
-    // 取消報名（主辦人強制取消 或 球友在時限內自行取消）
     const handleCancelPlayer = async (player: any, session: any, isSelfCancel = false) => {
         const confirmMsg = isSelfCancel
             ? `確定要取消您在「${session.title}」的報名嗎？`
@@ -332,7 +327,6 @@ export default function MySessionsPage() {
                 .update({ status: "cancelled", cancelled_at: new Date().toISOString() })
                 .eq("id", player.id);
 
-            // 若原本是正取，自動將候補第一順位遞補為正取
             if (player.status === "registered") {
                 const waitlisted = (session.open_play_players || [])
                     .filter((p: any) => p.status === "waitlisted")
@@ -351,7 +345,6 @@ export default function MySessionsPage() {
         }
     };
 
-    // 球友在「報名資訊」中補付款 / 回報
     const handlePlayerReportPayment = async () => {
         if (!payingRecord) return;
         if (payMethod === "bank" && !/^[0-9]{5}$/.test(payLast5.trim())) {
@@ -419,7 +412,6 @@ export default function MySessionsPage() {
 
     const managingSession = sessions.find((s) => s.id === managingSessionId);
 
-    // 點擊「修改內容」時載入該場次完整設定
     const openEditModal = (targetSession: any) => {
         setFormCity(targetSession.city || "台中市");
         setFormDistrict(targetSession.district || "龍井區");
@@ -456,7 +448,6 @@ export default function MySessionsPage() {
     return (
         <div className="w-full min-h-full bg-[#F8F9FA] pb-16">
             {managingSession ? (
-                // ==================== 單一場次管理視圖 (主辦視角) ====================
                 (() => {
                     const allPlayers = managingSession.open_play_players || [];
                     const activePlayers = allPlayers.filter((p: any) => p.status !== "cancelled");
@@ -465,11 +456,10 @@ export default function MySessionsPage() {
                         const score = (p: any) => {
                             if (p.status === "cancelled") return 99;
                             if (p.status === "waitlisted") return 50;
-                            const isPendingVerify =
-                                p.payment_status === "reported" ||
-                                (p.payment_account_last5 && p.payment_status !== "paid" && p.payment_status !== "confirmed");
+                            const isPaid = p.payment_status === "paid" || p.payment_status === "confirmed";
+                            const isPendingVerify = !isPaid && (p.payment_status === "reported" || Boolean(p.payment_account_last5));
                             if (isPendingVerify) return 1;
-                            if (p.payment_status === "paid" || p.payment_status === "confirmed") return 3;
+                            if (isPaid) return 3;
                             return 2;
                         };
                         return score(a) - score(b);
@@ -544,6 +534,7 @@ export default function MySessionsPage() {
                                         sortedPlayers.map((player: any) => {
                                             const isPaid = player.payment_status === "paid" || player.payment_status === "confirmed";
                                             const isPendingVerify = !isPaid && (player.payment_status === "reported" || Boolean(player.payment_account_last5));
+
                                             let lightBadge = "🟡 待付款";
                                             let badgeClass = "bg-amber-50 text-amber-700 border-amber-200";
                                             if (player.status === "cancelled") {
@@ -560,7 +551,6 @@ export default function MySessionsPage() {
                                                 badgeClass = "bg-[#FEF3C7] text-amber-900 border-amber-300";
                                             }
 
-                                            // 顯示球友的付款方式與對帳碼
                                             let paymentMethodStr = "尚未回報";
                                             if (player.payment_method === "cash" || player.payment_account_last5 === "現場付款") {
                                                 paymentMethodStr = "💵 現場付款";
@@ -635,7 +625,6 @@ export default function MySessionsPage() {
                     );
                 })()
             ) : (
-                // ==================== 列表視圖 (開團資訊 & 報名資訊) ====================
                 <>
                     <div className="bg-white px-4 pt-3 pb-3 sticky top-0 z-30 border-b border-gray-100">
                         <h1 className="text-xl font-extrabold text-gray-900 mb-3">我的臨打</h1>
@@ -780,7 +769,6 @@ export default function MySessionsPage() {
                                 </div>
                             </div>
                         ) : (
-                            // ==================== 報名資訊視圖 (球友視角大升級) ====================
                             <div className="space-y-3">
                                 <h2 className="text-sm font-extrabold text-green-800 border-b-2 border-green-700 pb-0.5 mb-1">
                                     我報名的臨打 ({myJoinedEntries.length})
@@ -795,6 +783,7 @@ export default function MySessionsPage() {
                                         const regCount = activePlayers.filter((p: any) => p.status === "registered").length;
                                         const waitCount = activePlayers.filter((p: any) => p.status === "waitlisted").length;
 
+                                        // 修正：確實比對 paid 狀態，避免卡在我要付款
                                         const isPaid = player.payment_status === "paid" || player.payment_status === "confirmed";
                                         const isReported = player.payment_status === "reported" || Boolean(player.payment_account_last5);
 
@@ -816,7 +805,6 @@ export default function MySessionsPage() {
                                         const mapQuery = `${fullAddress} ${session.title || ""}`.trim();
                                         const limitText = getCancelLimitDisplay(session);
 
-                                        // 系統強制防呆 (做法 B)：計算現在時間與開打時間差
                                         const [y, m, d] = (session.session_date || "2026-01-01").split("-").map(Number);
                                         const [hh, mm] = (session.start_time || "00:00").split(":").map(Number);
                                         const sessionStartObj = new Date(y, m - 1, d, hh, mm, 0);
@@ -832,7 +820,6 @@ export default function MySessionsPage() {
                                             }
                                         }
 
-                                        // 明確顯示付款狀態與方式字串
                                         let paymentStatusText = "";
                                         if (isPaid) {
                                             paymentStatusText = "🟢 主辦人已確認收款";
@@ -846,7 +833,6 @@ export default function MySessionsPage() {
 
                                         return (
                                             <div key={player.id} className="bg-white rounded-2xl p-4 border border-gray-100 shadow-2xs space-y-3">
-                                                {/* 與找球打首頁完全對齊的卡片上半部 */}
                                                 <div className="flex justify-between items-start gap-3">
                                                     <div className="flex items-start gap-3 min-w-0 flex-1">
                                                         <div className="mt-1 shrink-0">
@@ -913,7 +899,6 @@ export default function MySessionsPage() {
                                                     </div>
                                                 </div>
 
-                                                {/* 備註顯示 */}
                                                 {session.notes && (
                                                     <div className="bg-amber-50/70 p-2.5 rounded-xl text-xs text-gray-700 border border-amber-100">
                                                         <span className="font-bold text-amber-900">📝 備註：</span>
@@ -921,7 +906,6 @@ export default function MySessionsPage() {
                                                     </div>
                                                 )}
 
-                                                {/* 付款狀態橫幅 + 補付款與防呆取消按鈕 */}
                                                 {player.status !== "cancelled" && (
                                                     <div className="pt-3 border-t border-gray-100 space-y-2.5">
                                                         {player.status === "registered" && (
@@ -929,8 +913,8 @@ export default function MySessionsPage() {
                                                                 {isReported || isPaid ? (
                                                                     <div
                                                                         className={`px-3 py-2 rounded-xl border text-xs font-extrabold flex items-center justify-between ${isPaid
-                                                                                ? "bg-green-50 border-green-200 text-green-800"
-                                                                                : "bg-gray-50 border-gray-200 text-gray-800"
+                                                                            ? "bg-green-50 border-green-200 text-green-800"
+                                                                            : "bg-gray-50 border-gray-200 text-gray-800"
                                                                             }`}
                                                                     >
                                                                         <span>{paymentStatusText}</span>
@@ -970,7 +954,6 @@ export default function MySessionsPage() {
                                                             </div>
                                                         )}
 
-                                                        {/* 做法 B：強制鎖定防呆取消按鈕 */}
                                                         {isCancelLocked ? (
                                                             <button
                                                                 disabled
@@ -998,7 +981,6 @@ export default function MySessionsPage() {
                 </>
             )}
 
-            {/* ==================== 開團 / 修改臨打 Modal ==================== */}
             {showCreateModal && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
                     <div className="bg-white rounded-2xl w-full max-w-sm max-h-[88dvh] overflow-y-auto p-5 shadow-2xl">
@@ -1006,7 +988,6 @@ export default function MySessionsPage() {
                             {isEditingSession ? "修改臨打活動" : "開一場臨打"}
                         </h2>
                         <form onSubmit={handleSaveSession} className="space-y-3.5 text-xs">
-                            {/* 1. 地點與第幾號場地 */}
                             <div className="space-y-2">
                                 <label className="font-bold text-gray-800 block">1. 地點與場地編號 (必填)</label>
                                 <div className="grid grid-cols-2 gap-2">
@@ -1060,7 +1041,6 @@ export default function MySessionsPage() {
                                 </div>
                             </div>
 
-                            {/* 2~4. 日期與時間 */}
                             <div className="grid grid-cols-3 gap-2">
                                 <div>
                                     <label className="font-bold text-gray-800 block mb-1">2. 日期</label>
@@ -1094,7 +1074,6 @@ export default function MySessionsPage() {
                                 </div>
                             </div>
 
-                            {/* 5. 程度要求 */}
                             <div>
                                 <label className="font-bold text-gray-800 block mb-1">5. 程度要求</label>
                                 <div className="flex flex-wrap gap-1.5">
@@ -1104,8 +1083,8 @@ export default function MySessionsPage() {
                                             key={l}
                                             onClick={() => setFormLevel(l)}
                                             className={`py-1.5 px-2.5 rounded-lg font-bold border transition ${formLevel === l
-                                                    ? "bg-green-700 text-white border-green-700"
-                                                    : "bg-gray-50 text-gray-700 border-gray-200"
+                                                ? "bg-green-700 text-white border-green-700"
+                                                : "bg-gray-50 text-gray-700 border-gray-200"
                                                 }`}
                                         >
                                             {l}
@@ -1114,7 +1093,6 @@ export default function MySessionsPage() {
                                 </div>
                             </div>
 
-                            {/* 6~7. 人數與候補 */}
                             <div className="grid grid-cols-2 gap-2">
                                 <div>
                                     <label className="font-bold text-gray-800 block mb-1">6. 正取人數上限</label>
@@ -1135,8 +1113,8 @@ export default function MySessionsPage() {
                                                 key={w}
                                                 onClick={() => setFormWaitlist(w)}
                                                 className={`flex-1 py-2 rounded-lg font-bold border ${formWaitlist === w
-                                                        ? "bg-gray-800 text-white border-gray-800"
-                                                        : "bg-gray-50 text-gray-600 border-gray-200"
+                                                    ? "bg-gray-800 text-white border-gray-800"
+                                                    : "bg-gray-50 text-gray-600 border-gray-200"
                                                     }`}
                                             >
                                                 {w}
@@ -1146,7 +1124,6 @@ export default function MySessionsPage() {
                                 </div>
                             </div>
 
-                            {/* 8. 費用與收款資訊 */}
                             <div className="space-y-2">
                                 <div>
                                     <label className="font-bold text-gray-800 block mb-1">8. 每人費用 ($)</label>
@@ -1177,7 +1154,6 @@ export default function MySessionsPage() {
                                 </div>
                             </div>
 
-                            {/* 9. 取消限制 (做法 B：三選一 + 自訂小時數) */}
                             <div className="space-y-2">
                                 <label className="font-bold text-gray-800 block">9. 取消限制 (到時自動鎖定取消按鈕)</label>
                                 <div className="grid grid-cols-3 gap-1.5">
@@ -1185,8 +1161,8 @@ export default function MySessionsPage() {
                                         type="button"
                                         onClick={() => setCancelLimitMode("unlimited")}
                                         className={`py-2 px-1 rounded-xl font-bold border text-[11px] transition ${cancelLimitMode === "unlimited"
-                                                ? "bg-green-700 text-white border-green-700"
-                                                : "bg-gray-50 text-gray-700 border-gray-200"
+                                            ? "bg-green-700 text-white border-green-700"
+                                            : "bg-gray-50 text-gray-700 border-gray-200"
                                             }`}
                                     >
                                         不限
@@ -1195,8 +1171,8 @@ export default function MySessionsPage() {
                                         type="button"
                                         onClick={() => setCancelLimitMode("no_cancel")}
                                         className={`py-2 px-1 rounded-xl font-bold border text-[11px] transition ${cancelLimitMode === "no_cancel"
-                                                ? "bg-green-700 text-white border-green-700"
-                                                : "bg-gray-50 text-gray-700 border-gray-200"
+                                            ? "bg-green-700 text-white border-green-700"
+                                            : "bg-gray-50 text-gray-700 border-gray-200"
                                             }`}
                                     >
                                         報名後不可取消
@@ -1205,8 +1181,8 @@ export default function MySessionsPage() {
                                         type="button"
                                         onClick={() => setCancelLimitMode("custom")}
                                         className={`py-2 px-1 rounded-xl font-bold border text-[11px] transition ${cancelLimitMode === "custom"
-                                                ? "bg-green-700 text-white border-green-700"
-                                                : "bg-gray-50 text-gray-700 border-gray-200"
+                                            ? "bg-green-700 text-white border-green-700"
+                                            : "bg-gray-50 text-gray-700 border-gray-200"
                                             }`}
                                     >
                                         開打前設定時限
@@ -1230,7 +1206,6 @@ export default function MySessionsPage() {
                                 )}
                             </div>
 
-                            {/* 10. 備註欄 */}
                             <div>
                                 <label className="font-bold text-gray-800 block mb-1">10. 備註欄 (選填)</label>
                                 <textarea
@@ -1263,7 +1238,6 @@ export default function MySessionsPage() {
                 </div>
             )}
 
-            {/* ==================== 球友補付款 / 回報三選一 Modal ==================== */}
             {payingRecord && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
                     <div className="bg-white rounded-2xl w-full max-w-sm p-5 space-y-4 shadow-2xl">
@@ -1276,8 +1250,8 @@ export default function MySessionsPage() {
                                 type="button"
                                 onClick={() => setPayMethod("bank")}
                                 className={`py-2.5 rounded-xl font-bold text-xs border ${payMethod === "bank"
-                                        ? "border-gray-900 bg-gray-900 text-white"
-                                        : "border-gray-200 text-gray-600 bg-gray-50"
+                                    ? "border-gray-900 bg-gray-900 text-white"
+                                    : "border-gray-200 text-gray-600 bg-gray-50"
                                     }`}
                             >
                                 銀行轉帳
@@ -1286,8 +1260,8 @@ export default function MySessionsPage() {
                                 type="button"
                                 onClick={() => setPayMethod("line")}
                                 className={`py-2.5 rounded-xl font-bold text-xs border ${payMethod === "line"
-                                        ? "border-[#06C755] bg-[#06C755] text-white"
-                                        : "border-gray-200 text-gray-600 bg-gray-50"
+                                    ? "border-[#06C755] bg-[#06C755] text-white"
+                                    : "border-gray-200 text-gray-600 bg-gray-50"
                                     }`}
                             >
                                 TWQR / 付款碼
@@ -1296,8 +1270,8 @@ export default function MySessionsPage() {
                                 type="button"
                                 onClick={() => setPayMethod("cash")}
                                 className={`py-2.5 rounded-xl font-bold text-xs border ${payMethod === "cash"
-                                        ? "border-amber-600 bg-amber-600 text-white"
-                                        : "border-gray-200 text-gray-600 bg-gray-50"
+                                    ? "border-amber-600 bg-amber-600 text-white"
+                                    : "border-gray-200 text-gray-600 bg-gray-50"
                                     }`}
                             >
                                 現場付款
