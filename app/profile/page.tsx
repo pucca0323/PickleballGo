@@ -17,7 +17,6 @@ import {
     LogOut,
 } from "lucide-react";
 
-// 取得台灣本地 YYYY-MM-DD，避免 UTC 8 小時時差問題
 const getLocalDateStr = (d: Date) => {
     const year = d.getFullYear();
     const month = String(d.getMonth() + 1).padStart(2, "0");
@@ -25,7 +24,6 @@ const getLocalDateStr = (d: Date) => {
     return `${year}-${month}-${day}`;
 };
 
-// 原生 Web Crypto API SHA-256 加鹽雜湊加密 (結合手機號碼作為動態 Salt，防範彩虹表反查)
 async function hashPin(phone: string, pin: string): Promise<string> {
     const encoder = new TextEncoder();
     const saltedData = encoder.encode(`picklego_salt_${phone.trim()}_${pin.trim()}`);
@@ -135,7 +133,6 @@ export default function ProfilePage() {
         }
     };
 
-    // 結合加鹽 SHA-256 雜湊加密、舊明文自動升級、以及本機開團紀錄自動認領的同步邏輯
     const handleVerifyAndSync = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!/^[0-9]{10}$/.test(authPhone.trim()))
@@ -147,11 +144,8 @@ export default function ProfilePage() {
         try {
             const cleanPhone = authPhone.trim();
             const cleanPin = authPin.trim();
-
-            // 產生加鹽後的 SHA-256 雜湊值
             const saltedHash = await hashPin(cleanPhone, cleanPin);
 
-            // 相容舊版未加鹽雜湊 (若剛才已測試過未加鹽版本，也能順利通過並自動升級)
             const legacyUnsaltedBuffer = await crypto.subtle.digest(
                 "SHA-256",
                 new TextEncoder().encode(cleanPin)
@@ -174,7 +168,7 @@ export default function ProfilePage() {
                     !storedPin ||
                     storedPin === saltedHash ||
                     storedPin === legacyUnsaltedHash ||
-                    storedPin === cleanPin; // 相容最初的 4 碼明文並自動升級
+                    storedPin === cleanPin;
 
                 if (!isMatch) {
                     alert("❌ 4 碼 PIN 碼不正確！無法載入該手機號碼的個人資料。");
@@ -188,7 +182,6 @@ export default function ProfilePage() {
                     existingUser.name ||
                     lineNickname;
 
-                // 自動將資料庫更新為最安全的加鹽雜湊值
                 await supabase
                     .from("users")
                     .update({ pin_code: saltedHash, line_nickname: nextNickname, name: nextNickname })
@@ -224,7 +217,6 @@ export default function ProfilePage() {
                 });
             }
 
-            // 將本機曾經建立過但尚未綁定電話的開團紀錄，自動綁定到此手機號碼
             try {
                 const savedHosted = localStorage.getItem("picklego_hosted_sessions");
                 if (savedHosted) {
@@ -479,15 +471,15 @@ export default function ProfilePage() {
             <div className="p-4 space-y-5">
                 <div
                     className={`rounded-2xl p-4 border shadow-2xs flex items-center justify-between gap-3 ${isVerified
-                            ? "bg-green-50/70 border-green-200"
-                            : "bg-amber-50 border-amber-200"
+                        ? "bg-green-50/70 border-green-200"
+                        : "bg-amber-50 border-amber-200"
                         }`}
                 >
                     <div className="flex items-center gap-3 min-w-0">
                         <div
                             className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${isVerified
-                                    ? "bg-green-700 text-white"
-                                    : "bg-amber-500 text-white"
+                                ? "bg-green-700 text-white"
+                                : "bg-amber-500 text-white"
                                 }`}
                         >
                             {isVerified ? <ShieldCheck size={20} /> : <Lock size={18} />}
@@ -667,8 +659,8 @@ export default function ProfilePage() {
                         <button
                             onClick={() => setHistoryTab("hosted")}
                             className={`py-2 rounded-lg text-xs font-extrabold transition-all ${historyTab === "hosted"
-                                    ? "bg-green-700 text-white shadow-2xs"
-                                    : "text-gray-600"
+                                ? "bg-green-700 text-white shadow-2xs"
+                                : "text-gray-600"
                                 }`}
                         >
                             開團紀錄 ({myHostedSessions.length})
@@ -676,8 +668,8 @@ export default function ProfilePage() {
                         <button
                             onClick={() => setHistoryTab("joined")}
                             className={`py-2 rounded-lg text-xs font-extrabold transition-all ${historyTab === "joined"
-                                    ? "bg-green-700 text-white shadow-2xs"
-                                    : "text-gray-600"
+                                ? "bg-green-700 text-white shadow-2xs"
+                                : "text-gray-600"
                                 }`}
                         >
                             報名紀錄 ({myJoinedSessions.length})
@@ -719,7 +711,7 @@ export default function ProfilePage() {
                                                     {s.start_time?.slice(0, 5)}–{s.end_time?.slice(0, 5)}
                                                 </p>
                                                 <p className="text-xs text-gray-600 mt-0.5">
-                                                    {s.title} | {s.courts?.name || "1號場地"}
+                                                    {s.title} | {s.court_name || s.courts?.name || "1號場地"}
                                                 </p>
                                                 <p className="text-xs text-gray-500 mt-1">
                                                     {regCount} / {s.max_players} 人 |{" "}
@@ -731,9 +723,7 @@ export default function ProfilePage() {
                                                         }
                                                     >
                                                         {historyTab === "hosted"
-                                                            ? isCompleted
-                                                                ? "開團滿團"
-                                                                : "我開的團"
+                                                            ? `$${s.price}` // ✅ 修改處：無論是否滿團，開團紀錄右下角一律顯示費用
                                                             : "已參加"}
                                                     </span>
                                                 </p>
@@ -883,8 +873,8 @@ export default function ProfilePage() {
                                     <button
                                         onClick={() => setExportType("hosted")}
                                         className={`py-2 rounded-xl font-bold border transition ${exportType === "hosted"
-                                                ? "bg-green-700 text-white border-green-700"
-                                                : "bg-gray-50 text-gray-600 border-gray-200"
+                                            ? "bg-green-700 text-white border-green-700"
+                                            : "bg-gray-50 text-gray-600 border-gray-200"
                                             }`}
                                     >
                                         開團對帳報表
@@ -892,8 +882,8 @@ export default function ProfilePage() {
                                     <button
                                         onClick={() => setExportType("joined")}
                                         className={`py-2 rounded-xl font-bold border transition ${exportType === "joined"
-                                                ? "bg-green-700 text-white border-green-700"
-                                                : "bg-gray-50 text-gray-600 border-gray-200"
+                                            ? "bg-green-700 text-white border-green-700"
+                                            : "bg-gray-50 text-gray-600 border-gray-200"
                                             }`}
                                     >
                                         個人報名紀錄

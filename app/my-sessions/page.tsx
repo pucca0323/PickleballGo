@@ -63,11 +63,9 @@ export default function MySessionsPage() {
     const [formWaitlist, setFormWaitlist] = useState(2);
     const [formPrice, setFormPrice] = useState(150);
 
-    // 取消限制狀態
     const [cancelLimitMode, setCancelLimitMode] = useState<"unlimited" | "no_cancel" | "custom">("custom");
     const [customCancelHours, setCustomCancelHours] = useState<number>(24);
 
-    // 備註與收款資訊
     const [formNotes, setFormNotes] = useState("");
     const [formBankAccount, setFormBankAccount] = useState("");
     const [formPaymentLink, setFormPaymentLink] = useState("");
@@ -456,10 +454,11 @@ export default function MySessionsPage() {
                         const score = (p: any) => {
                             if (p.status === "cancelled") return 99;
                             if (p.status === "waitlisted") return 50;
-                            const isPaid = p.payment_status === "paid" || p.payment_status === "confirmed";
-                            const isPendingVerify = !isPaid && (p.payment_status === "reported" || Boolean(p.payment_account_last5));
+                            const isPendingVerify =
+                                p.payment_status === "reported" ||
+                                (p.payment_account_last5 && p.payment_status !== "paid" && p.payment_status !== "confirmed");
                             if (isPendingVerify) return 1;
-                            if (isPaid) return 3;
+                            if (p.payment_status === "paid" || p.payment_status === "confirmed") return 3;
                             return 2;
                         };
                         return score(a) - score(b);
@@ -534,7 +533,6 @@ export default function MySessionsPage() {
                                         sortedPlayers.map((player: any) => {
                                             const isPaid = player.payment_status === "paid" || player.payment_status === "confirmed";
                                             const isPendingVerify = !isPaid && (player.payment_status === "reported" || Boolean(player.payment_account_last5));
-
                                             let lightBadge = "🟡 待付款";
                                             let badgeClass = "bg-amber-50 text-amber-700 border-amber-200";
                                             if (player.status === "cancelled") {
@@ -720,6 +718,11 @@ export default function MySessionsPage() {
                                                     iconType = "green";
                                                 }
 
+                                                const courtText = getCourtLabel(session);
+                                                const fullAddress = `${session.city || ""}${session.district || ""}${session.address || ""}`.trim();
+                                                const mapQuery = `${fullAddress} ${session.title || ""}`.trim();
+                                                const limitText = getCancelLimitDisplay(session);
+
                                                 return (
                                                     <div
                                                         key={session.id}
@@ -745,18 +748,36 @@ export default function MySessionsPage() {
                                                                 )}
                                                             </div>
                                                             <div className="min-w-0 flex-1">
-                                                                <p className="font-extrabold text-[15px] text-gray-900">
-                                                                    {formatDateWithDay(session.session_date)} {session.start_time?.slice(0, 5)}–{session.end_time?.slice(0, 5)}
+                                                                <p className="font-extrabold text-[15px] text-gray-900 leading-snug">
+                                                                    {formatDateWithDay(session.session_date)}{" "}
+                                                                    {session.start_time?.slice(0, 5)}–{session.end_time?.slice(0, 5)}
                                                                 </p>
                                                                 <p className="text-sm font-bold text-gray-800 mt-0.5 truncate">
-                                                                    {session.title} · {getCourtLabel(session)}
+                                                                    {session.title} · <span className="text-green-700">{courtText}</span>
                                                                 </p>
-                                                                <p className="text-xs text-gray-500 mt-1">
-                                                                    🎾 {session.level || "不限"} | 🛡️ {getCancelLimitDisplay(session)}
+                                                                <p className="text-xs font-bold text-gray-500 mt-0.5">
+                                                                    🎾 程度：{session.level || "不限"} | 🛡️ {limitText}
                                                                 </p>
+                                                                <a
+                                                                    href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapQuery)}`}
+                                                                    target="_blank"
+                                                                    rel="noreferrer"
+                                                                    onClick={(e) => e.stopPropagation()}
+                                                                    className="text-xs font-bold text-blue-600 mt-1 flex items-center gap-1 hover:underline"
+                                                                >
+                                                                    <MapPin size={12} className="shrink-0" />
+                                                                    <span className="truncate">{fullAddress || session.title} (點擊導航)</span>
+                                                                </a>
+                                                                <div className="text-xs text-gray-500 mt-1.5 flex items-center gap-2">
+                                                                    <span className="font-bold text-gray-700">
+                                                                        {regPlayers.length} / {session.max_players} 人
+                                                                    </span>
+                                                                    <span>|</span>
+                                                                    <span className="font-bold text-green-700">${session.price}</span>
+                                                                </div>
                                                             </div>
                                                         </div>
-                                                        <div className="shrink-0">
+                                                        <div className="shrink-0 flex flex-col gap-2 items-end">
                                                             <span className={`px-3 py-1.5 rounded-full text-xs font-extrabold ${badgeStyle}`}>
                                                                 {actionBadge}
                                                             </span>
@@ -783,7 +804,6 @@ export default function MySessionsPage() {
                                         const regCount = activePlayers.filter((p: any) => p.status === "registered").length;
                                         const waitCount = activePlayers.filter((p: any) => p.status === "waitlisted").length;
 
-                                        // 修正：確實比對 paid 狀態，避免卡在我要付款
                                         const isPaid = player.payment_status === "paid" || player.payment_status === "confirmed";
                                         const isReported = player.payment_status === "reported" || Boolean(player.payment_account_last5);
 
@@ -1083,8 +1103,8 @@ export default function MySessionsPage() {
                                             key={l}
                                             onClick={() => setFormLevel(l)}
                                             className={`py-1.5 px-2.5 rounded-lg font-bold border transition ${formLevel === l
-                                                ? "bg-green-700 text-white border-green-700"
-                                                : "bg-gray-50 text-gray-700 border-gray-200"
+                                                    ? "bg-green-700 text-white border-green-700"
+                                                    : "bg-gray-50 text-gray-700 border-gray-200"
                                                 }`}
                                         >
                                             {l}
@@ -1113,8 +1133,8 @@ export default function MySessionsPage() {
                                                 key={w}
                                                 onClick={() => setFormWaitlist(w)}
                                                 className={`flex-1 py-2 rounded-lg font-bold border ${formWaitlist === w
-                                                    ? "bg-gray-800 text-white border-gray-800"
-                                                    : "bg-gray-50 text-gray-600 border-gray-200"
+                                                        ? "bg-gray-800 text-white border-gray-800"
+                                                        : "bg-gray-50 text-gray-600 border-gray-200"
                                                     }`}
                                             >
                                                 {w}
@@ -1161,8 +1181,8 @@ export default function MySessionsPage() {
                                         type="button"
                                         onClick={() => setCancelLimitMode("unlimited")}
                                         className={`py-2 px-1 rounded-xl font-bold border text-[11px] transition ${cancelLimitMode === "unlimited"
-                                            ? "bg-green-700 text-white border-green-700"
-                                            : "bg-gray-50 text-gray-700 border-gray-200"
+                                                ? "bg-green-700 text-white border-green-700"
+                                                : "bg-gray-50 text-gray-700 border-gray-200"
                                             }`}
                                     >
                                         不限
@@ -1171,8 +1191,8 @@ export default function MySessionsPage() {
                                         type="button"
                                         onClick={() => setCancelLimitMode("no_cancel")}
                                         className={`py-2 px-1 rounded-xl font-bold border text-[11px] transition ${cancelLimitMode === "no_cancel"
-                                            ? "bg-green-700 text-white border-green-700"
-                                            : "bg-gray-50 text-gray-700 border-gray-200"
+                                                ? "bg-green-700 text-white border-green-700"
+                                                : "bg-gray-50 text-gray-700 border-gray-200"
                                             }`}
                                     >
                                         報名後不可取消
@@ -1181,8 +1201,8 @@ export default function MySessionsPage() {
                                         type="button"
                                         onClick={() => setCancelLimitMode("custom")}
                                         className={`py-2 px-1 rounded-xl font-bold border text-[11px] transition ${cancelLimitMode === "custom"
-                                            ? "bg-green-700 text-white border-green-700"
-                                            : "bg-gray-50 text-gray-700 border-gray-200"
+                                                ? "bg-green-700 text-white border-green-700"
+                                                : "bg-gray-50 text-gray-700 border-gray-200"
                                             }`}
                                     >
                                         開打前設定時限
@@ -1250,8 +1270,8 @@ export default function MySessionsPage() {
                                 type="button"
                                 onClick={() => setPayMethod("bank")}
                                 className={`py-2.5 rounded-xl font-bold text-xs border ${payMethod === "bank"
-                                    ? "border-gray-900 bg-gray-900 text-white"
-                                    : "border-gray-200 text-gray-600 bg-gray-50"
+                                        ? "border-gray-900 bg-gray-900 text-white"
+                                        : "border-gray-200 text-gray-600 bg-gray-50"
                                     }`}
                             >
                                 銀行轉帳
@@ -1260,8 +1280,8 @@ export default function MySessionsPage() {
                                 type="button"
                                 onClick={() => setPayMethod("line")}
                                 className={`py-2.5 rounded-xl font-bold text-xs border ${payMethod === "line"
-                                    ? "border-[#06C755] bg-[#06C755] text-white"
-                                    : "border-gray-200 text-gray-600 bg-gray-50"
+                                        ? "border-[#06C755] bg-[#06C755] text-white"
+                                        : "border-gray-200 text-gray-600 bg-gray-50"
                                     }`}
                             >
                                 TWQR / 付款碼
@@ -1270,8 +1290,8 @@ export default function MySessionsPage() {
                                 type="button"
                                 onClick={() => setPayMethod("cash")}
                                 className={`py-2.5 rounded-xl font-bold text-xs border ${payMethod === "cash"
-                                    ? "border-amber-600 bg-amber-600 text-white"
-                                    : "border-gray-200 text-gray-600 bg-gray-50"
+                                        ? "border-amber-600 bg-amber-600 text-white"
+                                        : "border-gray-200 text-gray-600 bg-gray-50"
                                     }`}
                             >
                                 現場付款
