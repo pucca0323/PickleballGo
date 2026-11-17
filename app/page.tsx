@@ -2,22 +2,35 @@
 
 import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "../lib/supabase";
-import {
-  CheckCircle2,
-  Clock,
-  AlertCircle,
-  SlidersHorizontal,
-  Users,
-  X,
-  MapPin,
-  Share,
-} from "lucide-react";
+import { SlidersHorizontal, X, Share } from "lucide-react";
 
 const getLocalDateStr = (d: Date) => {
   const year = d.getFullYear();
   const month = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+};
+
+const renderTextWithLinks = (text: string) => {
+  if (!text) return null;
+  const urlRegex = /(https?:\/\/[^\s]+)/g;
+  return text.split(urlRegex).map((part, i) => {
+    if (part.match(urlRegex)) {
+      return (
+        <a
+          key={i}
+          href={part}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-blue-600 underline break-all font-bold"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {part}
+        </a>
+      );
+    }
+    return part;
+  });
 };
 
 export default function FindGamesPage() {
@@ -181,7 +194,7 @@ export default function FindGamesPage() {
     try {
       if (session.payment_info) return JSON.parse(session.payment_info);
     } catch (e) { }
-    return { bank: "", link: "" };
+    return { bank: "", link: "", socialName: "", socialLink: "" };
   };
 
   const handleBooking = async (e: React.FormEvent, session: any) => {
@@ -273,7 +286,7 @@ export default function FindGamesPage() {
         .eq("id", createdPlayerId);
 
       if (error) throw error;
-      alert("✅ 付款方式回報已送出！可隨時至「我的臨打 > 報名資訊」查看狀態。");
+      alert("付款方式回報已送出！可隨時至「我的臨打 > 報名資訊」查看狀態。");
       setBookingResult(null);
       setTimeLeft(null);
       fetchData();
@@ -290,10 +303,12 @@ export default function FindGamesPage() {
     const courtText = getCourtLabel(session);
     const locStr = `${session.city || ""}${session.district || ""} ${session.address || ""} ${session.title} (${courtText})`.trim();
     const limitStr = getCancelLimitDisplay(session);
+    const hostStr = session.host_name || "Pickle 玩家";
     const noteStr = session.notes ? `\n備註：${session.notes}` : "";
-    const text = `PickleGo 臨打邀請\n時間：${formatDateWithDay(session.session_date)} ${session.start_time?.slice(0, 5)}-${session.end_time?.slice(0, 5)}\n地點：${locStr}\n程度：${session.level || "不限"}\n費用：$${session.price || 0} / 人\n規範：${limitStr}${noteStr}\n\n快速報名：\n${url}`;
+
+    const text = `PickleGo 臨打邀請\n主辦：${hostStr}\n時間：${formatDateWithDay(session.session_date)} ${session.start_time?.slice(0, 5)}-${session.end_time?.slice(0, 5)}\n地點：${locStr}\n程度：${session.level || "不限"}\n費用：$${session.price || 0} / 人\n規範：${limitStr}${noteStr}\n\n快速報名：\n${url}`;
     navigator.clipboard.writeText(text);
-    alert("✅ 報名資訊與網址已複製！");
+    alert("報名資訊與網址已複製！");
   };
 
   const datesWithSessions = useMemo(() => {
@@ -380,7 +395,7 @@ export default function FindGamesPage() {
           <div className="bg-white rounded-2xl p-8 text-center border border-gray-100 mt-4 space-y-3">
             <p className="text-gray-500 font-bold">這天沒有符合的臨打</p>
             <p className="text-gray-400 text-xs">
-              上方有綠點的日期代表有開團，或點擊下方按鈕查看全部
+              上方有標記的日期代表有開團，或點擊下方按鈕查看全部
             </p>
             {selectedDate !== "ALL" && (
               <button
@@ -409,33 +424,35 @@ export default function FindGamesPage() {
             let statusLabel = "我要報名";
             let badgeStyle = "bg-green-100 text-green-800 hover:bg-green-200";
             let canClick = true;
-            let leftIconType = "open";
+            let dotStyle = "bg-amber-400";
+
             if (myStatus === "registered") {
               statusLabel = "已報名";
               badgeStyle = "bg-green-700 text-white";
               canClick = false;
-              leftIconType = "joined";
+              dotStyle = "bg-green-600";
             } else if (myStatus === "waitlisted") {
               statusLabel = "候補中";
               badgeStyle = "bg-amber-100 text-amber-800";
               canClick = false;
-              leftIconType = "waitlist";
+              dotStyle = "bg-gray-400";
             } else if (isCompletelyFull) {
               statusLabel = "已額滿";
               badgeStyle = "bg-gray-200 text-gray-600";
               canClick = false;
-              leftIconType = "full";
+              dotStyle = "bg-green-600";
             } else if (isRegFull) {
               statusLabel = "候補報名";
               badgeStyle = "bg-amber-100 text-amber-800 hover:bg-amber-200";
               canClick = true;
-              leftIconType = "waitlist";
+              dotStyle = "bg-gray-400";
             }
 
             const courtText = getCourtLabel(session);
             const fullAddress = `${session.city || ""}${session.district || ""}${session.address || ""}`.trim();
             const mapQuery = `${fullAddress} ${session.title || ""}`.trim();
             const limitText = getCancelLimitDisplay(session);
+            const payInfo = parseSessionPaymentInfo(session);
 
             return (
               <div
@@ -446,22 +463,8 @@ export default function FindGamesPage() {
               >
                 <div className="flex justify-between items-start gap-3">
                   <div className="flex items-start gap-3 min-w-0 flex-1">
-                    <div className="mt-1 shrink-0">
-                      {leftIconType === "open" && (
-                        <div className="w-6 h-6 rounded-full bg-amber-400 flex items-center justify-center">
-                          <div className="w-2 h-2 rounded-full bg-white" />
-                        </div>
-                      )}
-                      {(leftIconType === "full" || leftIconType === "joined") && (
-                        <div className="w-6 h-6 rounded-full bg-green-600 text-white flex items-center justify-center">
-                          <CheckCircle2 size={15} strokeWidth={3} />
-                        </div>
-                      )}
-                      {leftIconType === "waitlist" && (
-                        <div className="w-6 h-6 rounded-full bg-gray-500 text-white flex items-center justify-center">
-                          <Users size={13} />
-                        </div>
-                      )}
+                    <div className="mt-1.5 shrink-0">
+                      <div className={`w-2 h-2 rounded-full ${dotStyle}`} />
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="font-extrabold text-[15px] text-gray-900 leading-snug">
@@ -471,29 +474,43 @@ export default function FindGamesPage() {
                       <p className="text-sm font-bold text-gray-800 mt-0.5 truncate">
                         {session.title} · <span className="text-green-700">{courtText}</span>
                       </p>
+                      <p className="text-xs font-medium text-gray-600 mt-1">
+                        主辦：{session.host_name || "Pickle 玩家"}
+                        {payInfo.socialLink && (
+                          <>
+                            {" | 社群："}
+                            <a
+                              href={payInfo.socialLink}
+                              target="_blank"
+                              rel="noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              className="text-blue-600 hover:underline"
+                            >
+                              {payInfo.socialName || "社群連結"}
+                            </a>
+                          </>
+                        )}
+                      </p>
                       <p className="text-xs font-medium text-gray-500 mt-0.5">
-                        程度：{session.level || "不限"} | {limitText}
+                        程度：{session.level || "不限"} | 規範：{limitText}
                       </p>
                       <a
                         href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapQuery)}`}
                         target="_blank"
                         rel="noreferrer"
-                        className="text-xs font-medium text-blue-600 mt-1 flex items-center gap-1 hover:underline"
+                        className="text-xs font-medium text-blue-600 mt-0.5 inline-block hover:underline"
                       >
-                        <MapPin size={12} className="shrink-0" />
-                        <span className="truncate">
-                          {fullAddress || session.title}
-                        </span>
+                        導航：{fullAddress || session.title}
                       </a>
                       <div className="text-xs text-gray-500 mt-1.5 flex items-center gap-2">
                         <span className="font-medium text-gray-700">
-                          {regCount} / {session.max_players} 人
+                          報名：{regCount} / {session.max_players} 人
                         </span>
                         {waitCount > 0 && (
                           <span className="text-amber-700 font-medium">(候補 {waitCount})</span>
                         )}
                         <span>|</span>
-                        <span className="font-extrabold text-green-700">${session.price}</span>
+                        <span className="font-extrabold text-green-700">費用：${session.price}</span>
                       </div>
                     </div>
                   </div>
@@ -516,9 +533,9 @@ export default function FindGamesPage() {
                 </div>
 
                 {session.notes && (
-                  <div className="mt-3 bg-gray-50 p-2.5 rounded-xl text-xs text-gray-700 border border-gray-200">
+                  <div className="mt-3 bg-gray-50 p-2.5 rounded-xl text-xs text-gray-700 border border-gray-200 whitespace-pre-wrap">
                     <span className="font-bold text-gray-900">備註：</span>
-                    {session.notes}
+                    {renderTextWithLinks(session.notes)}
                   </div>
                 )}
 
@@ -588,7 +605,7 @@ export default function FindGamesPage() {
             </div>
             <div className="space-y-5">
               <div>
-                <label className="text-sm font-bold text-gray-700 block mb-2">📍 地區</label>
+                <label className="text-sm font-bold text-gray-700 block mb-2">地區</label>
                 <div className="grid grid-cols-4 gap-2">
                   {["全部", "北部", "中部", "南部"].map((r) => (
                     <button
@@ -605,7 +622,7 @@ export default function FindGamesPage() {
                 </div>
               </div>
               <div>
-                <label className="text-sm font-bold text-gray-700 block mb-2">⏰ 時段</label>
+                <label className="text-sm font-bold text-gray-700 block mb-2">時段</label>
                 <div className="grid grid-cols-2 gap-2">
                   {["全部", "早上 (00-12)", "下午 (12-18)", "晚上 (18-24)"].map((t) => (
                     <button
@@ -622,7 +639,7 @@ export default function FindGamesPage() {
                 </div>
               </div>
               <div>
-                <label className="text-sm font-bold text-gray-700 block mb-2">🎾 程度</label>
+                <label className="text-sm font-bold text-gray-700 block mb-2">程度</label>
                 <div className="grid grid-cols-4 gap-2">
                   {["全部", "新手", "2.0", "2.5", "3.0", "3.5", "4.0+"].map((l) => (
                     <button
@@ -654,7 +671,6 @@ export default function FindGamesPage() {
           <div className="bg-white rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl">
             {bookingResult.status === "waitlisted" ? (
               <div className="p-5 text-center">
-                <CheckCircle2 size={42} className="mx-auto text-amber-500 mb-2" />
                 <h2 className="text-lg font-bold text-gray-900 mb-1">已排入候補名單</h2>
                 <p className="text-sm text-gray-600 mb-4">
                   若有正取球友取消，系統將自動依序遞補，屆時將更新您的狀態。
@@ -672,20 +688,18 @@ export default function FindGamesPage() {
             ) : (
               <>
                 <div className="p-4 text-center bg-green-700">
-                  <CheckCircle2 size={36} className="mx-auto text-white mb-1" />
                   <h2 className="text-base font-bold text-white">報名成功！已保留名額</h2>
                 </div>
                 <div className="p-5 space-y-4">
                   <div className="p-3 rounded-xl text-center bg-amber-50 border border-amber-200">
                     {timeLeft === 0 ? (
                       <div className="text-red-600 font-bold text-xs">
-                        <AlertCircle size={20} className="mx-auto mb-1" />
                         保留時間已逾時，名額釋出
                       </div>
                     ) : (
                       <>
                         <p className="text-xs font-bold text-gray-700 flex items-center justify-center gap-1 mb-0.5">
-                          <Clock size={14} /> 請於限時內選擇付款方式並回報
+                          請於限時內選擇付款方式並回報
                         </p>
                         <p className="text-2xl font-black font-mono text-red-600">
                           {timeLeft !== null ? formatTime(timeLeft) : "10:00"}
@@ -754,7 +768,7 @@ export default function FindGamesPage() {
                               </div>
                             ) : selectedPayment === "cash" ? (
                               <p className="text-gray-700 font-bold text-center py-2">
-                                💵 屆時請於活動現場將現金 (${bookingResult.price}) 繳交給主辦人。
+                                屆時請於活動現場將現金 (${bookingResult.price}) 繳交給主辦人。
                               </p>
                             ) : (
                               <div className="space-y-2 text-center py-1">

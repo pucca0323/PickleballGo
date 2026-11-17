@@ -40,6 +40,7 @@ export default function ProfilePage() {
 
     const [paymentLink, setPaymentLink] = useState("");
     const [bankAccount, setBankAccount] = useState("");
+    const [socialName, setSocialName] = useState("");
     const [socialLink, setSocialLink] = useState("");
 
     const [showAuthModal, setShowAuthModal] = useState(false);
@@ -52,6 +53,7 @@ export default function ProfilePage() {
         "line" | "qr" | "bank" | "social" | null
     >(null);
     const [tempValue, setTempValue] = useState("");
+    const [tempValue2, setTempValue2] = useState("");
 
     const [historyTab, setHistoryTab] = useState<"hosted" | "joined">("hosted");
     const [myHostedSessions, setMyHostedSessions] = useState<any[]>([]);
@@ -84,6 +86,7 @@ export default function ProfilePage() {
                 }
                 if (parsed.paymentLink) setPaymentLink(parsed.paymentLink);
                 if (parsed.bankAccount) setBankAccount(parsed.bankAccount);
+                if (parsed.socialName) setSocialName(parsed.socialName);
                 if (parsed.socialLink) setSocialLink(parsed.socialLink);
             }
         } catch (e) {
@@ -187,13 +190,26 @@ export default function ProfilePage() {
                     .update({ pin_code: saltedHash, line_nickname: nextNickname, name: nextNickname })
                     .eq("phone", cleanPhone);
 
+                let existingSocialName = "";
+                let existingSocialLink = "";
+                try {
+                    if (existingUser.social_link) {
+                        const parsedSocial = JSON.parse(existingUser.social_link);
+                        existingSocialName = parsedSocial.name || "";
+                        existingSocialLink = parsedSocial.url || "";
+                    }
+                } catch (e) {
+                    existingSocialLink = existingUser.social_link || "";
+                }
+
                 finalProfile = {
                     phone: cleanPhone,
                     pinCode: saltedHash,
                     lineNickname: nextNickname,
                     paymentLink: existingUser.payment_link || paymentLink,
                     bankAccount: existingUser.bank_account || bankAccount,
-                    socialLink: existingUser.social_link || socialLink,
+                    socialName: existingSocialName || socialName,
+                    socialLink: existingSocialLink || socialLink,
                 };
             } else {
                 const finalNick = authNickname.trim() || lineNickname || "Pickle 玩家";
@@ -203,9 +219,11 @@ export default function ProfilePage() {
                     lineNickname: finalNick,
                     paymentLink,
                     bankAccount,
+                    socialName,
                     socialLink,
                 };
 
+                const socialJson = JSON.stringify({ name: socialName, url: socialLink });
                 await supabase.from("users").upsert({
                     phone: cleanPhone,
                     name: finalNick,
@@ -213,7 +231,7 @@ export default function ProfilePage() {
                     pin_code: saltedHash,
                     payment_link: paymentLink || null,
                     bank_account: bankAccount || null,
-                    social_link: socialLink || null,
+                    social_link: socialJson || null,
                 });
             }
 
@@ -236,6 +254,7 @@ export default function ProfilePage() {
             setLineNickname(finalProfile.lineNickname);
             setPaymentLink(finalProfile.paymentLink);
             setBankAccount(finalProfile.bankAccount);
+            setSocialName(finalProfile.socialName);
             setSocialLink(finalProfile.socialLink);
             setIsVerified(true);
 
@@ -263,6 +282,7 @@ export default function ProfilePage() {
         setLineNickname("Pickle 玩家");
         setPaymentLink("");
         setBankAccount("");
+        setSocialName("");
         setSocialLink("");
         setIsVerified(false);
         setMyHostedSessions([]);
@@ -280,17 +300,20 @@ export default function ProfilePage() {
             pinCode,
             paymentLink: editingField === "qr" ? tempValue.trim() : paymentLink,
             bankAccount: editingField === "bank" ? tempValue.trim() : bankAccount,
-            socialLink: editingField === "social" ? tempValue.trim() : socialLink,
+            socialName: editingField === "social" ? tempValue.trim() : socialName,
+            socialLink: editingField === "social" ? tempValue2.trim() : socialLink,
         };
 
         setLineNickname(nextProfile.lineNickname);
         setPaymentLink(nextProfile.paymentLink);
         setBankAccount(nextProfile.bankAccount);
+        setSocialName(nextProfile.socialName);
         setSocialLink(nextProfile.socialLink);
 
         localStorage.setItem("picklego_user_profile", JSON.stringify(nextProfile));
 
         if (nextProfile.phone) {
+            const socialJson = JSON.stringify({ name: nextProfile.socialName, url: nextProfile.socialLink });
             await supabase.from("users").upsert({
                 phone: nextProfile.phone,
                 name: nextProfile.lineNickname,
@@ -298,7 +321,7 @@ export default function ProfilePage() {
                 pin_code: nextProfile.pinCode || null,
                 payment_link: nextProfile.paymentLink || null,
                 bank_account: nextProfile.bankAccount || null,
-                social_link: nextProfile.socialLink || null,
+                social_link: socialJson,
             });
         }
 
@@ -454,9 +477,6 @@ export default function ProfilePage() {
                 <div className="flex items-center justify-between mb-2">
                     <div className="w-6" />
                     <div className="flex items-center gap-1.5">
-                        <span className="w-5 h-5 rounded-full bg-[#F3C84B] border border-gray-800 flex items-center justify-center text-[10px] font-black">
-                            🎾
-                        </span>
                         <span className="font-extrabold text-base tracking-tight text-gray-900">
                             PickleGo
                         </span>
@@ -583,7 +603,8 @@ export default function ProfilePage() {
                     <button
                         onClick={() => {
                             setEditingField("social");
-                            setTempValue(socialLink);
+                            setTempValue(socialName);
+                            setTempValue2(socialLink);
                         }}
                         className="w-full px-4 py-3.5 flex items-center justify-between text-left hover:bg-gray-50 transition"
                     >
@@ -592,9 +613,9 @@ export default function ProfilePage() {
                                 <LinkIcon size={16} />
                             </div>
                             <div className="min-w-0">
-                                <p className="text-xs font-bold text-gray-900">社群連結 (選填)</p>
+                                <p className="text-xs font-bold text-gray-900">社群推廣連結 (選填)</p>
                                 <p className="text-xs text-gray-500 truncate mt-0.5">
-                                    {socialLink || "可貼上 IG、FB 或個人網站連結"}
+                                    {socialName || "可設定 IG/FB 等連結供球友點擊"}
                                 </p>
                             </div>
                         </div>
@@ -615,7 +636,7 @@ export default function ProfilePage() {
                             <div className="min-w-0">
                                 <p className="text-xs font-bold text-gray-900">付款碼連結 (選填)</p>
                                 <p className="text-xs text-gray-500 truncate mt-0.5">
-                                    {paymentLink || "TWQR收款碼例如街口、全支付、悠遊付、台灣PAY"}
+                                    {paymentLink || "TWQR收款碼例如街口、全支付"}
                                 </p>
                             </div>
                         </div>
@@ -723,7 +744,7 @@ export default function ProfilePage() {
                                                         }
                                                     >
                                                         {historyTab === "hosted"
-                                                            ? `$${s.price}` // ✅ 修改處：無論是否滿團，開團紀錄右下角一律顯示費用
+                                                            ? `$${s.price}`
                                                             : "已參加"}
                                                     </span>
                                                 </p>
@@ -821,24 +842,45 @@ export default function ProfilePage() {
                             {editingField === "line" && "設定 LINE 暱稱"}
                             {editingField === "qr" && "設定付款碼連結"}
                             {editingField === "bank" && "設定銀行帳戶"}
-                            {editingField === "social" && "設定社群連結"}
+                            {editingField === "social" && "設定推廣連結"}
                         </h3>
-                        {editingField === "qr" && (
-                            <p className="text-xs text-gray-500 -mt-1 mb-2">
-                                可貼上街口、全支付、悠遊付、台灣PAY 等 TWQR 通用收款連結。
-                            </p>
+                        {editingField === "social" ? (
+                            <div className="space-y-2">
+                                <input
+                                    type="text"
+                                    value={tempValue}
+                                    onChange={(e) => setTempValue(e.target.value)}
+                                    placeholder="顯示名稱 (例：享動匹克球館 IG)"
+                                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-900"
+                                />
+                                <input
+                                    type="text"
+                                    value={tempValue2}
+                                    onChange={(e) => setTempValue2(e.target.value)}
+                                    placeholder="網址連結 (例：https://ig...)"
+                                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-900"
+                                />
+                            </div>
+                        ) : (
+                            <>
+                                {editingField === "qr" && (
+                                    <p className="text-xs text-gray-500 -mt-1 mb-2">
+                                        可貼上街口、全支付、悠遊付、台灣PAY 等 TWQR 通用收款連結。
+                                    </p>
+                                )}
+                                <input
+                                    type="text"
+                                    value={tempValue}
+                                    onChange={(e) => setTempValue(e.target.value)}
+                                    placeholder={
+                                        editingField === "bank"
+                                            ? "例：822 中國信託 123456789012"
+                                            : "請輸入內容"
+                                    }
+                                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-900"
+                                />
+                            </>
                         )}
-                        <input
-                            type="text"
-                            value={tempValue}
-                            onChange={(e) => setTempValue(e.target.value)}
-                            placeholder={
-                                editingField === "bank"
-                                    ? "例：822 中國信託 123456789012"
-                                    : "請輸入內容"
-                            }
-                            className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-900"
-                        />
                         <div className="flex gap-2 pt-1">
                             <button
                                 onClick={() => setEditingField(null)}
@@ -889,11 +931,6 @@ export default function ProfilePage() {
                                         個人報名紀錄
                                     </button>
                                 </div>
-                                {exportType === "hosted" && (
-                                    <p className="text-gray-500 mt-1.5">
-                                        💡 開團報表會自動產生對帳碼與回報時間，方便您使用 Excel 快速對帳。
-                                    </p>
-                                )}
                             </div>
 
                             <div>
