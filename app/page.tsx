@@ -156,9 +156,18 @@ export default function FindGamesPage() {
   };
 
   const getCourtLabel = (session: any) => {
-    if (session.court_name) return session.court_name;
+    if (session.court_name) {
+      try {
+        const parsed = JSON.parse(session.court_name);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return `${parsed.join(", ")}號場`;
+        }
+      } catch (e) {
+        return session.court_name;
+      }
+    }
     if (session.courts?.name) return session.courts.name;
-    return "1號場地";
+    return "未指定場地";
   };
 
   const getCancelLimitDisplay = (session: any) => {
@@ -281,8 +290,8 @@ export default function FindGamesPage() {
     const courtText = getCourtLabel(session);
     const locStr = `${session.city || ""}${session.district || ""} ${session.address || ""} ${session.title} (${courtText})`.trim();
     const limitStr = getCancelLimitDisplay(session);
-    const noteStr = session.notes ? `\n【備註】${session.notes}` : "";
-    const text = `🎾 PickleGo 臨打邀請\n【時間】${formatDateWithDay(session.session_date)} ${session.start_time?.slice(0, 5)}-${session.end_time?.slice(0, 5)}\n【地點】${locStr}\n【程度】${session.level || "不限"}\n【費用】$${session.price || 0} / 人\n【取消規範】${limitStr}${noteStr}\n👇 點擊網址快速報名：\n${url}`;
+    const noteStr = session.notes ? `\n備註：${session.notes}` : "";
+    const text = `PickleGo 臨打邀請\n時間：${formatDateWithDay(session.session_date)} ${session.start_time?.slice(0, 5)}-${session.end_time?.slice(0, 5)}\n地點：${locStr}\n程度：${session.level || "不限"}\n費用：$${session.price || 0} / 人\n規範：${limitStr}${noteStr}\n\n快速報名：\n${url}`;
     navigator.clipboard.writeText(text);
     alert("✅ 報名資訊與網址已複製！");
   };
@@ -347,8 +356,8 @@ export default function FindGamesPage() {
                   setSelectedSession(null);
                 }}
                 className={`relative shrink-0 px-4 py-1.5 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 ${isSelected
-                    ? "bg-green-700 text-white shadow-2xs"
-                    : "bg-gray-100 text-gray-600"
+                  ? "bg-green-700 text-white shadow-2xs"
+                  : "bg-gray-100 text-gray-600"
                   }`}
               >
                 <span>{d.display}</span>
@@ -369,7 +378,7 @@ export default function FindGamesPage() {
           <p className="text-center py-12 text-sm text-gray-400">載入中...</p>
         ) : displaySessions.length === 0 ? (
           <div className="bg-white rounded-2xl p-8 text-center border border-gray-100 mt-4 space-y-3">
-            <p className="text-gray-500 font-bold">這天沒有符合的臨打 🏓</p>
+            <p className="text-gray-500 font-bold">這天沒有符合的臨打</p>
             <p className="text-gray-400 text-xs">
               上方有綠點的日期代表有開團，或點擊下方按鈕查看全部
             </p>
@@ -462,29 +471,29 @@ export default function FindGamesPage() {
                       <p className="text-sm font-bold text-gray-800 mt-0.5 truncate">
                         {session.title} · <span className="text-green-700">{courtText}</span>
                       </p>
-                      <p className="text-xs font-bold text-gray-500 mt-0.5">
-                        🎾 程度：{session.level || "不限"} | 🛡️ {limitText}
+                      <p className="text-xs font-medium text-gray-500 mt-0.5">
+                        程度：{session.level || "不限"} | {limitText}
                       </p>
                       <a
                         href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapQuery)}`}
                         target="_blank"
                         rel="noreferrer"
-                        className="text-xs font-bold text-blue-600 mt-1 flex items-center gap-1 hover:underline"
+                        className="text-xs font-medium text-blue-600 mt-1 flex items-center gap-1 hover:underline"
                       >
                         <MapPin size={12} className="shrink-0" />
                         <span className="truncate">
-                          {fullAddress || session.title} (點擊導航)
+                          {fullAddress || session.title}
                         </span>
                       </a>
                       <div className="text-xs text-gray-500 mt-1.5 flex items-center gap-2">
-                        <span className="font-bold text-gray-700">
+                        <span className="font-medium text-gray-700">
                           {regCount} / {session.max_players} 人
                         </span>
                         {waitCount > 0 && (
-                          <span className="text-amber-700 font-bold">(候補 {waitCount})</span>
+                          <span className="text-amber-700 font-medium">(候補 {waitCount})</span>
                         )}
                         <span>|</span>
-                        <span className="font-bold text-green-700">${session.price}</span>
+                        <span className="font-extrabold text-green-700">${session.price}</span>
                       </div>
                     </div>
                   </div>
@@ -507,8 +516,8 @@ export default function FindGamesPage() {
                 </div>
 
                 {session.notes && (
-                  <div className="mt-3 bg-amber-50/70 p-2.5 rounded-xl text-xs text-gray-700 border border-amber-100">
-                    <span className="font-bold text-amber-900">📝 備註：</span>
+                  <div className="mt-3 bg-gray-50 p-2.5 rounded-xl text-xs text-gray-700 border border-gray-200">
+                    <span className="font-bold text-gray-900">備註：</span>
                     {session.notes}
                   </div>
                 )}
@@ -586,8 +595,8 @@ export default function FindGamesPage() {
                       key={r}
                       onClick={() => setFilterRegion(r)}
                       className={`py-2 rounded-xl text-xs font-bold border transition ${filterRegion === r
-                          ? "bg-green-700 text-white border-green-700"
-                          : "bg-white text-gray-600 border-gray-200"
+                        ? "bg-green-700 text-white border-green-700"
+                        : "bg-white text-gray-600 border-gray-200"
                         }`}
                     >
                       {r}
@@ -603,8 +612,8 @@ export default function FindGamesPage() {
                       key={t}
                       onClick={() => setFilterTime(t)}
                       className={`py-2 rounded-xl text-xs font-bold border transition ${filterTime === t
-                          ? "bg-green-700 text-white border-green-700"
-                          : "bg-white text-gray-600 border-gray-200"
+                        ? "bg-green-700 text-white border-green-700"
+                        : "bg-white text-gray-600 border-gray-200"
                         }`}
                     >
                       {t}
@@ -620,8 +629,8 @@ export default function FindGamesPage() {
                       key={l}
                       onClick={() => setFilterLevel(l)}
                       className={`py-2 rounded-xl text-xs font-bold border transition ${filterLevel === l
-                          ? "bg-green-700 text-white border-green-700"
-                          : "bg-white text-gray-600 border-gray-200"
+                        ? "bg-green-700 text-white border-green-700"
+                        : "bg-white text-gray-600 border-gray-200"
                         }`}
                     >
                       {l}
@@ -690,8 +699,8 @@ export default function FindGamesPage() {
                         <button
                           onClick={() => setSelectedPayment("bank")}
                           className={`py-2.5 rounded-xl font-bold text-xs border ${selectedPayment === "bank"
-                              ? "border-gray-900 bg-gray-900 text-white"
-                              : "border-gray-200 text-gray-600 bg-gray-50"
+                            ? "border-gray-900 bg-gray-900 text-white"
+                            : "border-gray-200 text-gray-600 bg-gray-50"
                             }`}
                         >
                           銀行轉帳
@@ -699,8 +708,8 @@ export default function FindGamesPage() {
                         <button
                           onClick={() => setSelectedPayment("line")}
                           className={`py-2.5 rounded-xl font-bold text-xs border ${selectedPayment === "line"
-                              ? "border-[#06C755] bg-[#06C755] text-white"
-                              : "border-gray-200 text-gray-600 bg-gray-50"
+                            ? "border-[#06C755] bg-[#06C755] text-white"
+                            : "border-gray-200 text-gray-600 bg-gray-50"
                             }`}
                         >
                           TWQR / 付款碼
@@ -708,8 +717,8 @@ export default function FindGamesPage() {
                         <button
                           onClick={() => setSelectedPayment("cash")}
                           className={`py-2.5 rounded-xl font-bold text-xs border ${selectedPayment === "cash"
-                              ? "border-amber-600 bg-amber-600 text-white"
-                              : "border-gray-200 text-gray-600 bg-gray-50"
+                            ? "border-amber-600 bg-amber-600 text-white"
+                            : "border-gray-200 text-gray-600 bg-gray-50"
                             }`}
                         >
                           現場付款

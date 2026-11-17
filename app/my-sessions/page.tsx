@@ -40,6 +40,7 @@ export default function MySessionsPage() {
         lineNickname: "",
         paymentLink: "",
         bankAccount: "",
+        socialLink: "",
     });
     const [hostedIds, setHostedIds] = useState<string[]>([]);
     const [joinedMap, setJoinedMap] = useState<Record<string, string>>({});
@@ -54,7 +55,8 @@ export default function MySessionsPage() {
     const [formDistrict, setFormDistrict] = useState("龍井區");
     const [formLocation, setFormLocation] = useState("");
     const [formAddress, setFormAddress] = useState("");
-    const [formCourtName, setFormCourtName] = useState("1號場地");
+    // 將場地編號改為多選陣列，預設勾選 1
+    const [formCourtNames, setFormCourtNames] = useState<number[]>([1]);
     const [formDate, setFormDate] = useState("");
     const [formStartTime, setFormStartTime] = useState("19:00");
     const [formEndTime, setFormEndTime] = useState("21:00");
@@ -69,8 +71,8 @@ export default function MySessionsPage() {
     const [formNotes, setFormNotes] = useState("");
     const [formBankAccount, setFormBankAccount] = useState("");
     const [formPaymentLink, setFormPaymentLink] = useState("");
+    const [formSocialLink, setFormSocialLink] = useState("");
 
-    // ==================== 球友補付款 / 回報 Modal 狀態 ====================
     const [payingRecord, setPayingRecord] = useState<any | null>(null);
     const [payMethod, setPayMethod] = useState<"bank" | "line" | "cash">("bank");
     const [payLast5, setPayLast5] = useState("");
@@ -85,9 +87,11 @@ export default function MySessionsPage() {
                     lineNickname: parsed.lineNickname || "",
                     paymentLink: parsed.paymentLink || "",
                     bankAccount: parsed.bankAccount || "",
+                    socialLink: parsed.socialLink || "",
                 });
                 setFormBankAccount(parsed.bankAccount || "");
                 setFormPaymentLink(parsed.paymentLink || "");
+                setFormSocialLink(parsed.socialLink || "");
             }
             const savedHosted = localStorage.getItem("picklego_hosted_sessions");
             if (savedHosted) setHostedIds(JSON.parse(savedHosted));
@@ -139,9 +143,18 @@ export default function MySessionsPage() {
     };
 
     const getCourtLabel = (session: any) => {
-        if (session.court_name) return session.court_name;
+        if (session.court_name) {
+            try {
+                const parsed = JSON.parse(session.court_name);
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                    return `${parsed.join(", ")}號場`;
+                }
+            } catch (e) {
+                return session.court_name; // 容錯處理舊字串
+            }
+        }
         if (session.courts?.name) return session.courts.name;
-        return "1號場地";
+        return "未指定場地";
     };
 
     const getCancelLimitDisplay = (session: any) => {
@@ -167,7 +180,7 @@ export default function MySessionsPage() {
                 setFormDistrict(t.district || "龍井區");
                 setFormLocation(t.location || "");
                 setFormAddress(t.address || "");
-                setFormCourtName(t.courtName || "1號場地");
+                setFormCourtNames(t.courtNames || [1]);
                 setFormStartTime(t.startTime || "19:00");
                 setFormEndTime(t.endTime || "21:00");
                 setFormLevel(t.level || "不限");
@@ -179,6 +192,7 @@ export default function MySessionsPage() {
                 setFormNotes(t.notes || "");
                 setFormBankAccount(t.bankAccount || userProfile.bankAccount || "");
                 setFormPaymentLink(t.paymentLink || userProfile.paymentLink || "");
+                setFormSocialLink(t.socialLink || userProfile.socialLink || "");
                 setIsEditingSession(false);
                 setShowCreateModal(true);
                 return;
@@ -194,8 +208,8 @@ export default function MySessionsPage() {
         if (!formLocation.trim() || !formDate || !formCity || !formDistrict) {
             return alert("請完整填寫地點與日期！");
         }
-        if (!formCourtName.trim()) {
-            return alert("請填寫第幾號場地（例如：1號場地、A場）！");
+        if (formCourtNames.length === 0) {
+            return alert("請至少選擇一個場地編號！");
         }
         if (cancelLimitMode === "custom" && (!customCancelHours || customCancelHours < 1)) {
             return alert("請輸入有效的取消限制小時數（至少 1 小時）！");
@@ -215,12 +229,18 @@ export default function MySessionsPage() {
                 link: formPaymentLink.trim(),
             });
 
+            // 如果有填寫社群連結，將其附加到 notes 中
+            let finalNotes = formNotes.trim();
+            if (formSocialLink.trim()) {
+                finalNotes = finalNotes ? `${finalNotes}\n主辦人社群：${formSocialLink.trim()}` : `主辦人社群：${formSocialLink.trim()}`;
+            }
+
             const payload: any = {
                 title: formLocation.trim(),
                 city: formCity,
                 district: formDistrict,
                 address: formAddress.trim() || null,
-                court_name: formCourtName.trim(),
+                court_name: JSON.stringify(formCourtNames.sort()), // 存入 JSON 陣列
                 host_phone: userProfile.phone || null,
                 host_name: userProfile.lineNickname || null,
                 session_date: formDate,
@@ -231,7 +251,7 @@ export default function MySessionsPage() {
                 max_players: Number(formMaxPlayers),
                 max_waitlist: Number(formWaitlist),
                 cancel_limit_hours: finalCancelHours,
-                notes: formNotes.trim() || null,
+                notes: finalNotes || null,
                 payment_info: paymentInfoJson,
                 status: "open",
             };
@@ -263,7 +283,7 @@ export default function MySessionsPage() {
                         district: formDistrict,
                         location: formLocation.trim(),
                         address: formAddress.trim(),
-                        courtName: formCourtName.trim(),
+                        courtNames: formCourtNames,
                         startTime: formStartTime,
                         endTime: formEndTime,
                         level: formLevel,
@@ -275,6 +295,7 @@ export default function MySessionsPage() {
                         notes: formNotes.trim(),
                         bankAccount: formBankAccount.trim(),
                         paymentLink: formPaymentLink.trim(),
+                        socialLink: formSocialLink.trim(),
                     })
                 );
                 alert("✅ 臨打活動已成功發布！");
@@ -381,8 +402,8 @@ export default function MySessionsPage() {
         const courtText = getCourtLabel(session);
         const locStr = `${session.city || ""}${session.district || ""} ${session.address || ""} ${session.title} (${courtText})`.trim();
         const limitStr = getCancelLimitDisplay(session);
-        const noteStr = session.notes ? `\n【備註】${session.notes}` : "";
-        const text = `🎾 PickleGo 臨打邀請\n【時間】${formatDateWithDay(session.session_date)} ${session.start_time?.slice(0, 5)}-${session.end_time?.slice(0, 5)}\n【地點】${locStr}\n【程度】${session.level || "不限"}\n【費用】$${session.price || 0} / 人\n【取消規範】${limitStr}${noteStr}\n👇 點擊連結快速報名：\n${url}`;
+        const noteStr = session.notes ? `\n備註：${session.notes}` : "";
+        const text = `PickleGo 臨打邀請\n時間：${formatDateWithDay(session.session_date)} ${session.start_time?.slice(0, 5)}-${session.end_time?.slice(0, 5)}\n地點：${locStr}\n程度：${session.level || "不限"}\n費用：$${session.price || 0} / 人\n規範：${limitStr}${noteStr}\n\n快速報名：\n${url}`;
         navigator.clipboard.writeText(text);
         alert("✅ 報名資訊與專屬網址已複製！");
     };
@@ -415,7 +436,14 @@ export default function MySessionsPage() {
         setFormDistrict(targetSession.district || "龍井區");
         setFormLocation(targetSession.title || "");
         setFormAddress(targetSession.address || "");
-        setFormCourtName(getCourtLabel(targetSession));
+
+        let parsedCourts = [1];
+        try {
+            parsedCourts = JSON.parse(targetSession.court_name);
+            if (!Array.isArray(parsedCourts)) parsedCourts = [1];
+        } catch (e) { }
+        setFormCourtNames(parsedCourts);
+
         setFormDate(targetSession.session_date);
         setFormStartTime(targetSession.start_time?.slice(0, 5) || "19:00");
         setFormEndTime(targetSession.end_time?.slice(0, 5) || "21:00");
@@ -434,13 +462,32 @@ export default function MySessionsPage() {
             setCancelLimitMode("unlimited");
         }
 
-        setFormNotes(targetSession.notes || "");
+        // 將社群連結從 notes 中分離出來 (如果有的話)
+        let originalNotes = targetSession.notes || "";
+        let extractedSocial = "";
+        if (originalNotes.includes("主辦人社群：")) {
+            const parts = originalNotes.split("主辦人社群：");
+            originalNotes = parts[0].trim();
+            extractedSocial = parts[1].trim();
+        }
+        setFormNotes(originalNotes);
+        setFormSocialLink(extractedSocial || userProfile.socialLink || "");
+
         const payInfo = parseSessionPaymentInfo(targetSession);
         setFormBankAccount(payInfo.bank || userProfile.bankAccount || "");
         setFormPaymentLink(payInfo.link || userProfile.paymentLink || "");
 
         setIsEditingSession(true);
         setShowCreateModal(true);
+    };
+
+    const toggleCourtName = (num: number) => {
+        setFormCourtNames(prev => {
+            if (prev.includes(num)) {
+                return prev.filter(n => n !== num);
+            }
+            return [...prev, num].sort();
+        });
     };
 
     return (
@@ -454,11 +501,10 @@ export default function MySessionsPage() {
                         const score = (p: any) => {
                             if (p.status === "cancelled") return 99;
                             if (p.status === "waitlisted") return 50;
-                            const isPendingVerify =
-                                p.payment_status === "reported" ||
-                                (p.payment_account_last5 && p.payment_status !== "paid" && p.payment_status !== "confirmed");
+                            const isPaid = p.payment_status === "paid" || p.payment_status === "confirmed";
+                            const isPendingVerify = !isPaid && (p.payment_status === "reported" || Boolean(p.payment_account_last5));
                             if (isPendingVerify) return 1;
-                            if (p.payment_status === "paid" || p.payment_status === "confirmed") return 3;
+                            if (isPaid) return 3;
                             return 2;
                         };
                         return score(a) - score(b);
@@ -466,6 +512,8 @@ export default function MySessionsPage() {
 
                     const courtText = getCourtLabel(managingSession);
                     const limitText = getCancelLimitDisplay(managingSession);
+                    const fullAddress = `${managingSession.city || ""}${managingSession.district || ""} ${managingSession.address || ""}`.trim();
+                    const mapQuery = `${fullAddress} ${managingSession.title || ""}`.trim();
 
                     return (
                         <div>
@@ -488,27 +536,33 @@ export default function MySessionsPage() {
                             <div className="p-4 space-y-4">
                                 <div className="bg-white rounded-2xl p-4 border border-gray-100 shadow-2xs">
                                     <div className="flex justify-between items-start">
-                                        <div>
-                                            <p className="font-extrabold text-base text-gray-900">
+                                        <div className="min-w-0 flex-1 pr-3">
+                                            <p className="font-extrabold text-[15px] text-gray-900 leading-snug">
                                                 {formatDateWithDay(managingSession.session_date)}{" "}
                                                 {managingSession.start_time?.slice(0, 5)}–{managingSession.end_time?.slice(0, 5)}
                                             </p>
-                                            <p className="text-sm font-bold text-gray-800 mt-0.5">
+                                            <p className="text-sm font-bold text-gray-800 mt-0.5 truncate">
                                                 {managingSession.title} · <span className="text-green-700">{courtText}</span>
                                             </p>
-                                            <p className="text-xs text-gray-500 mt-0.5">
-                                                📍 {managingSession.city || ""}{managingSession.district || ""} {managingSession.address || ""}
+                                            <p className="text-xs font-medium text-gray-500 mt-0.5">
+                                                程度：{managingSession.level || "不限"} | {limitText}
                                             </p>
-                                            <p className="text-xs font-bold text-gray-600 mt-1">
-                                                🎾 程度：{managingSession.level || "不限"} | 🛡️ {limitText}
-                                            </p>
+                                            <a
+                                                href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapQuery)}`}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                className="text-xs font-medium text-blue-600 mt-1 flex items-center gap-1 hover:underline"
+                                            >
+                                                <MapPin size={12} className="shrink-0" />
+                                                <span className="truncate">{fullAddress || managingSession.title}</span>
+                                            </a>
                                         </div>
-                                        <span className="font-extrabold text-base text-green-700">${managingSession.price}</span>
+                                        <span className="font-extrabold text-base text-green-700 shrink-0">${managingSession.price}</span>
                                     </div>
 
                                     {managingSession.notes && (
-                                        <div className="mt-3 bg-amber-50/70 p-2.5 rounded-xl text-xs text-gray-700 border border-amber-100">
-                                            <span className="font-bold text-amber-900">📝 備註：</span>
+                                        <div className="mt-3 bg-gray-50 p-2.5 rounded-xl text-xs text-gray-700 border border-gray-200">
+                                            <span className="font-bold text-gray-900">備註：</span>
                                             {managingSession.notes}
                                         </div>
                                     )}
@@ -533,6 +587,7 @@ export default function MySessionsPage() {
                                         sortedPlayers.map((player: any) => {
                                             const isPaid = player.payment_status === "paid" || player.payment_status === "confirmed";
                                             const isPendingVerify = !isPaid && (player.payment_status === "reported" || Boolean(player.payment_account_last5));
+
                                             let lightBadge = "🟡 待付款";
                                             let badgeClass = "bg-amber-50 text-amber-700 border-amber-200";
                                             if (player.status === "cancelled") {
@@ -653,12 +708,13 @@ export default function MySessionsPage() {
                                             setIsEditingSession(false);
                                             setFormLocation("");
                                             setFormAddress("");
-                                            setFormCourtName("1號場地");
+                                            setFormCourtNames([1]);
                                             setCancelLimitMode("custom");
                                             setCustomCancelHours(24);
                                             setFormNotes("");
                                             setFormBankAccount(userProfile.bankAccount || "");
                                             setFormPaymentLink(userProfile.paymentLink || "");
+                                            setFormSocialLink(userProfile.socialLink || "");
                                             setShowCreateModal(true);
                                         }}
                                         className="w-full bg-green-700 text-white font-extrabold py-3 rounded-xl text-sm flex items-center justify-center gap-1.5 shadow-xs"
@@ -755,25 +811,25 @@ export default function MySessionsPage() {
                                                                 <p className="text-sm font-bold text-gray-800 mt-0.5 truncate">
                                                                     {session.title} · <span className="text-green-700">{courtText}</span>
                                                                 </p>
-                                                                <p className="text-xs font-bold text-gray-500 mt-0.5">
-                                                                    🎾 程度：{session.level || "不限"} | 🛡️ {limitText}
+                                                                <p className="text-xs font-medium text-gray-500 mt-0.5">
+                                                                    程度：{session.level || "不限"} | {limitText}
                                                                 </p>
                                                                 <a
                                                                     href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapQuery)}`}
                                                                     target="_blank"
                                                                     rel="noreferrer"
                                                                     onClick={(e) => e.stopPropagation()}
-                                                                    className="text-xs font-bold text-blue-600 mt-1 flex items-center gap-1 hover:underline"
+                                                                    className="text-xs font-medium text-blue-600 mt-1 flex items-center gap-1 hover:underline"
                                                                 >
                                                                     <MapPin size={12} className="shrink-0" />
-                                                                    <span className="truncate">{fullAddress || session.title} (點擊導航)</span>
+                                                                    <span className="truncate">{fullAddress || session.title}</span>
                                                                 </a>
                                                                 <div className="text-xs text-gray-500 mt-1.5 flex items-center gap-2">
-                                                                    <span className="font-bold text-gray-700">
+                                                                    <span className="font-medium text-gray-700">
                                                                         {regPlayers.length} / {session.max_players} 人
                                                                     </span>
                                                                     <span>|</span>
-                                                                    <span className="font-bold text-green-700">${session.price}</span>
+                                                                    <span className="font-extrabold text-green-700">${session.price}</span>
                                                                 </div>
                                                             </div>
                                                         </div>
@@ -880,27 +936,27 @@ export default function MySessionsPage() {
                                                             <p className="text-sm font-bold text-gray-800 mt-0.5 truncate">
                                                                 {session.title} · <span className="text-green-700">{courtText}</span>
                                                             </p>
-                                                            <p className="text-xs font-bold text-gray-500 mt-0.5">
-                                                                🎾 程度：{session.level || "不限"} | 🛡️ {limitText}
+                                                            <p className="text-xs font-medium text-gray-500 mt-0.5">
+                                                                程度：{session.level || "不限"} | {limitText}
                                                             </p>
                                                             <a
                                                                 href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapQuery)}`}
                                                                 target="_blank"
                                                                 rel="noreferrer"
-                                                                className="text-xs font-bold text-blue-600 mt-1 flex items-center gap-1 hover:underline"
+                                                                className="text-xs font-medium text-blue-600 mt-1 flex items-center gap-1 hover:underline"
                                                             >
                                                                 <MapPin size={12} className="shrink-0" />
-                                                                <span className="truncate">{fullAddress || session.title} (點擊導航)</span>
+                                                                <span className="truncate">{fullAddress || session.title}</span>
                                                             </a>
                                                             <div className="text-xs text-gray-500 mt-1.5 flex items-center gap-2">
-                                                                <span className="font-bold text-gray-700">
+                                                                <span className="font-medium text-gray-700">
                                                                     {regCount} / {session.max_players} 人
                                                                 </span>
                                                                 {waitCount > 0 && (
-                                                                    <span className="text-amber-700 font-bold">(候補 {waitCount})</span>
+                                                                    <span className="text-amber-700 font-medium">(候補 {waitCount})</span>
                                                                 )}
                                                                 <span>|</span>
-                                                                <span className="font-bold text-green-700">${session.price}</span>
+                                                                <span className="font-extrabold text-green-700">${session.price}</span>
                                                             </div>
                                                         </div>
                                                     </div>
@@ -920,8 +976,8 @@ export default function MySessionsPage() {
                                                 </div>
 
                                                 {session.notes && (
-                                                    <div className="bg-amber-50/70 p-2.5 rounded-xl text-xs text-gray-700 border border-amber-100">
-                                                        <span className="font-bold text-amber-900">📝 備註：</span>
+                                                    <div className="bg-gray-50 p-2.5 rounded-xl text-xs text-gray-700 border border-gray-200">
+                                                        <span className="font-bold text-gray-900">備註：</span>
                                                         {session.notes}
                                                     </div>
                                                 )}
@@ -1001,15 +1057,18 @@ export default function MySessionsPage() {
                 </>
             )}
 
+            {/* ==================== 開團 / 修改臨打 Modal ==================== */}
             {showCreateModal && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
                     <div className="bg-white rounded-2xl w-full max-w-sm max-h-[88dvh] overflow-y-auto p-5 shadow-2xl">
-                        <h2 className="text-lg font-extrabold text-gray-900 mb-3">
+                        <h2 className="text-lg font-extrabold text-gray-900 mb-4">
                             {isEditingSession ? "修改臨打活動" : "開一場臨打"}
                         </h2>
-                        <form onSubmit={handleSaveSession} className="space-y-3.5 text-xs">
-                            <div className="space-y-2">
-                                <label className="font-bold text-gray-800 block">1. 地點與場地編號 (必填)</label>
+                        <form onSubmit={handleSaveSession} className="space-y-4 text-xs">
+
+                            {/* 1. 地點與場館資訊 */}
+                            <div className="space-y-2.5 bg-gray-50 p-3 rounded-xl border border-gray-200">
+                                <label className="font-extrabold text-gray-900 block text-sm">1. 選擇地點與場館</label>
                                 <div className="grid grid-cols-2 gap-2">
                                     <select
                                         value={formCity}
@@ -1017,7 +1076,7 @@ export default function MySessionsPage() {
                                             setFormCity(e.target.value);
                                             setFormDistrict(TAIWAN_CITIES[e.target.value]?.[0] || "");
                                         }}
-                                        className="bg-gray-50 border border-gray-200 rounded-xl px-2 py-2 text-gray-900 font-medium"
+                                        className="bg-white border border-gray-300 rounded-lg px-2 py-2 text-gray-900 font-bold"
                                     >
                                         {Object.keys(TAIWAN_CITIES).map((city) => (
                                             <option key={city} value={city}>{city}</option>
@@ -1026,7 +1085,7 @@ export default function MySessionsPage() {
                                     <select
                                         value={formDistrict}
                                         onChange={(e) => setFormDistrict(e.target.value)}
-                                        className="bg-gray-50 border border-gray-200 rounded-xl px-2 py-2 text-gray-900 font-medium"
+                                        className="bg-white border border-gray-300 rounded-lg px-2 py-2 text-gray-900 font-bold"
                                     >
                                         {(TAIWAN_CITIES[formCity] || []).map((dist) => (
                                             <option key={dist} value={dist}>{dist}</option>
@@ -1035,32 +1094,42 @@ export default function MySessionsPage() {
                                 </div>
                                 <input
                                     type="text"
-                                    required
-                                    placeholder="場館名稱 (如: 享動羽球匹克球智能館)"
-                                    value={formLocation}
-                                    onChange={(e) => setFormLocation(e.target.value)}
-                                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-gray-900"
+                                    placeholder="詳細地址 (例：沙田路245號)"
+                                    value={formAddress}
+                                    onChange={(e) => setFormAddress(e.target.value)}
+                                    className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-gray-900"
                                 />
                                 <input
                                     type="text"
-                                    placeholder="詳細地址 (如: 觀光路135巷1號，供 Google 導航)"
-                                    value={formAddress}
-                                    onChange={(e) => setFormAddress(e.target.value)}
-                                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-gray-900"
+                                    required
+                                    placeholder="場館名稱 (例：享動羽球匹克球智能館)"
+                                    value={formLocation}
+                                    onChange={(e) => setFormLocation(e.target.value)}
+                                    className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-gray-900 font-bold"
                                 />
-                                <div>
-                                    <label className="font-bold text-gray-700 block mb-1">第幾號場地 *</label>
-                                    <input
-                                        type="text"
-                                        required
-                                        placeholder="例：1號場地、A場、第1,2場"
-                                        value={formCourtName}
-                                        onChange={(e) => setFormCourtName(e.target.value)}
-                                        className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-gray-900 font-bold"
-                                    />
+                            </div>
+
+                            {/* 場地編號多選按鈕 */}
+                            <div>
+                                <label className="font-bold text-gray-800 block mb-1.5">第幾號場地 (可複選) *</label>
+                                <div className="grid grid-cols-6 gap-1.5">
+                                    {[1, 2, 3, 4, 5, 6].map((num) => (
+                                        <button
+                                            type="button"
+                                            key={num}
+                                            onClick={() => toggleCourtName(num)}
+                                            className={`py-2 rounded-lg font-bold border transition ${formCourtNames.includes(num)
+                                                    ? "bg-green-700 text-white border-green-700"
+                                                    : "bg-white text-gray-600 border-gray-200"
+                                                }`}
+                                        >
+                                            {num}
+                                        </button>
+                                    ))}
                                 </div>
                             </div>
 
+                            {/* 2~4. 日期與時間 */}
                             <div className="grid grid-cols-3 gap-2">
                                 <div>
                                     <label className="font-bold text-gray-800 block mb-1">2. 日期</label>
@@ -1094,6 +1163,7 @@ export default function MySessionsPage() {
                                 </div>
                             </div>
 
+                            {/* 5. 程度要求 */}
                             <div>
                                 <label className="font-bold text-gray-800 block mb-1">5. 程度要求</label>
                                 <div className="flex flex-wrap gap-1.5">
@@ -1103,8 +1173,8 @@ export default function MySessionsPage() {
                                             key={l}
                                             onClick={() => setFormLevel(l)}
                                             className={`py-1.5 px-2.5 rounded-lg font-bold border transition ${formLevel === l
-                                                    ? "bg-green-700 text-white border-green-700"
-                                                    : "bg-gray-50 text-gray-700 border-gray-200"
+                                                ? "bg-green-700 text-white border-green-700"
+                                                : "bg-gray-50 text-gray-700 border-gray-200"
                                                 }`}
                                         >
                                             {l}
@@ -1113,6 +1183,7 @@ export default function MySessionsPage() {
                                 </div>
                             </div>
 
+                            {/* 6~7. 人數與候補 */}
                             <div className="grid grid-cols-2 gap-2">
                                 <div>
                                     <label className="font-bold text-gray-800 block mb-1">6. 正取人數上限</label>
@@ -1133,8 +1204,8 @@ export default function MySessionsPage() {
                                                 key={w}
                                                 onClick={() => setFormWaitlist(w)}
                                                 className={`flex-1 py-2 rounded-lg font-bold border ${formWaitlist === w
-                                                        ? "bg-gray-800 text-white border-gray-800"
-                                                        : "bg-gray-50 text-gray-600 border-gray-200"
+                                                    ? "bg-gray-800 text-white border-gray-800"
+                                                    : "bg-gray-50 text-gray-600 border-gray-200"
                                                     }`}
                                             >
                                                 {w}
@@ -1144,6 +1215,7 @@ export default function MySessionsPage() {
                                 </div>
                             </div>
 
+                            {/* 8. 費用與收款資訊 */}
                             <div className="space-y-2">
                                 <div>
                                     <label className="font-bold text-gray-800 block mb-1">8. 每人費用 ($)</label>
@@ -1155,25 +1227,33 @@ export default function MySessionsPage() {
                                         className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-gray-900"
                                     />
                                 </div>
-                                <div className="bg-gray-50 p-2.5 rounded-xl border border-gray-200 space-y-2">
-                                    <p className="text-[11px] font-bold text-gray-600">收款設定 (供球友轉帳或點擊 TWQR 付款)</p>
+                                <div className="bg-gray-50 p-3 rounded-xl border border-gray-200 space-y-2">
+                                    <p className="text-[11px] font-bold text-gray-600">收款與社群設定 (自動帶入您的個人設定)</p>
                                     <input
                                         type="text"
-                                        placeholder="銀行轉帳帳號 (例: 822 中信 123456789)"
+                                        placeholder="例：822 中國信託 123456789012"
                                         value={formBankAccount}
                                         onChange={(e) => setFormBankAccount(e.target.value)}
-                                        className="w-full bg-white border border-gray-200 rounded-lg px-2.5 py-1.5 text-gray-900"
+                                        className="w-full bg-white border border-gray-300 rounded-lg px-2.5 py-2 text-gray-900"
                                     />
                                     <input
                                         type="text"
-                                        placeholder="TWQR / 付款碼連結 (選填)"
+                                        placeholder="TWQR / 街口 / LinePay 轉帳連結"
                                         value={formPaymentLink}
                                         onChange={(e) => setFormPaymentLink(e.target.value)}
-                                        className="w-full bg-white border border-gray-200 rounded-lg px-2.5 py-1.5 text-gray-900"
+                                        className="w-full bg-white border border-gray-300 rounded-lg px-2.5 py-2 text-gray-900"
+                                    />
+                                    <input
+                                        type="text"
+                                        placeholder="主辦人社群 (IG / FB 連結)"
+                                        value={formSocialLink}
+                                        onChange={(e) => setFormSocialLink(e.target.value)}
+                                        className="w-full bg-white border border-gray-300 rounded-lg px-2.5 py-2 text-gray-900"
                                     />
                                 </div>
                             </div>
 
+                            {/* 9. 取消限制 */}
                             <div className="space-y-2">
                                 <label className="font-bold text-gray-800 block">9. 取消限制 (到時自動鎖定取消按鈕)</label>
                                 <div className="grid grid-cols-3 gap-1.5">
@@ -1181,8 +1261,8 @@ export default function MySessionsPage() {
                                         type="button"
                                         onClick={() => setCancelLimitMode("unlimited")}
                                         className={`py-2 px-1 rounded-xl font-bold border text-[11px] transition ${cancelLimitMode === "unlimited"
-                                                ? "bg-green-700 text-white border-green-700"
-                                                : "bg-gray-50 text-gray-700 border-gray-200"
+                                            ? "bg-green-700 text-white border-green-700"
+                                            : "bg-gray-50 text-gray-700 border-gray-200"
                                             }`}
                                     >
                                         不限
@@ -1191,8 +1271,8 @@ export default function MySessionsPage() {
                                         type="button"
                                         onClick={() => setCancelLimitMode("no_cancel")}
                                         className={`py-2 px-1 rounded-xl font-bold border text-[11px] transition ${cancelLimitMode === "no_cancel"
-                                                ? "bg-green-700 text-white border-green-700"
-                                                : "bg-gray-50 text-gray-700 border-gray-200"
+                                            ? "bg-green-700 text-white border-green-700"
+                                            : "bg-gray-50 text-gray-700 border-gray-200"
                                             }`}
                                     >
                                         報名後不可取消
@@ -1201,8 +1281,8 @@ export default function MySessionsPage() {
                                         type="button"
                                         onClick={() => setCancelLimitMode("custom")}
                                         className={`py-2 px-1 rounded-xl font-bold border text-[11px] transition ${cancelLimitMode === "custom"
-                                                ? "bg-green-700 text-white border-green-700"
-                                                : "bg-gray-50 text-gray-700 border-gray-200"
+                                            ? "bg-green-700 text-white border-green-700"
+                                            : "bg-gray-50 text-gray-700 border-gray-200"
                                             }`}
                                     >
                                         開打前設定時限
@@ -1226,6 +1306,7 @@ export default function MySessionsPage() {
                                 )}
                             </div>
 
+                            {/* 10. 備註欄 */}
                             <div>
                                 <label className="font-bold text-gray-800 block mb-1">10. 備註欄 (選填)</label>
                                 <textarea
@@ -1258,6 +1339,7 @@ export default function MySessionsPage() {
                 </div>
             )}
 
+            {/* ==================== 球友補付款 / 回報三選一 Modal ==================== */}
             {payingRecord && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
                     <div className="bg-white rounded-2xl w-full max-w-sm p-5 space-y-4 shadow-2xl">
@@ -1270,8 +1352,8 @@ export default function MySessionsPage() {
                                 type="button"
                                 onClick={() => setPayMethod("bank")}
                                 className={`py-2.5 rounded-xl font-bold text-xs border ${payMethod === "bank"
-                                        ? "border-gray-900 bg-gray-900 text-white"
-                                        : "border-gray-200 text-gray-600 bg-gray-50"
+                                    ? "border-gray-900 bg-gray-900 text-white"
+                                    : "border-gray-200 text-gray-600 bg-gray-50"
                                     }`}
                             >
                                 銀行轉帳
@@ -1280,8 +1362,8 @@ export default function MySessionsPage() {
                                 type="button"
                                 onClick={() => setPayMethod("line")}
                                 className={`py-2.5 rounded-xl font-bold text-xs border ${payMethod === "line"
-                                        ? "border-[#06C755] bg-[#06C755] text-white"
-                                        : "border-gray-200 text-gray-600 bg-gray-50"
+                                    ? "border-[#06C755] bg-[#06C755] text-white"
+                                    : "border-gray-200 text-gray-600 bg-gray-50"
                                     }`}
                             >
                                 TWQR / 付款碼
@@ -1290,8 +1372,8 @@ export default function MySessionsPage() {
                                 type="button"
                                 onClick={() => setPayMethod("cash")}
                                 className={`py-2.5 rounded-xl font-bold text-xs border ${payMethod === "cash"
-                                        ? "border-amber-600 bg-amber-600 text-white"
-                                        : "border-gray-200 text-gray-600 bg-gray-50"
+                                    ? "border-amber-600 bg-amber-600 text-white"
+                                    : "border-gray-200 text-gray-600 bg-gray-50"
                                     }`}
                             >
                                 現場付款
