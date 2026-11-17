@@ -5,16 +5,12 @@ import { supabase } from "../../lib/supabase";
 import {
     Plus,
     RotateCcw,
-    CheckCircle2,
-    XCircle,
     ChevronLeft,
     Check,
     Edit3,
     Trash2,
-    MapPin,
     Share,
     Undo2,
-    Users,
     Lock,
 } from "lucide-react";
 
@@ -62,6 +58,7 @@ export default function MySessionsPage() {
         lineNickname: "",
         paymentLink: "",
         bankAccount: "",
+        socialName: "",
         socialLink: "",
     });
     const [hostedIds, setHostedIds] = useState<string[]>([]);
@@ -108,6 +105,7 @@ export default function MySessionsPage() {
                     lineNickname: parsed.lineNickname || "",
                     paymentLink: parsed.paymentLink || "",
                     bankAccount: parsed.bankAccount || "",
+                    socialName: parsed.socialName || "",
                     socialLink: parsed.socialLink || "",
                 });
                 setFormBankAccount(parsed.bankAccount || "");
@@ -281,7 +279,7 @@ export default function MySessionsPage() {
                     .update(payload)
                     .eq("id", managingSessionId);
                 if (error) throw error;
-                alert("✅ 開團內容已成功更新！");
+                alert("開團內容已成功更新！");
                 setIsEditingSession(false);
             } else {
                 const { data, error } = await supabase
@@ -318,7 +316,7 @@ export default function MySessionsPage() {
                         socialLink: formSocialLink.trim(),
                     })
                 );
-                alert("✅ 臨打活動已成功發布！");
+                alert("臨打活動已成功發布！");
             }
             setShowCreateModal(false);
             await fetchAllData();
@@ -405,7 +403,7 @@ export default function MySessionsPage() {
                 .eq("id", payingRecord.player.id);
 
             if (error) throw error;
-            alert("✅ 付款方式已回報成功！等待主辦人核帳。");
+            alert("付款方式已回報成功！等待主辦人核帳。");
             setPayingRecord(null);
             setPayLast5("");
             fetchAllData();
@@ -427,7 +425,7 @@ export default function MySessionsPage() {
 
         const text = `PickleGo 臨打邀請\n主辦：${hostStr}\n時間：${formatDateWithDay(session.session_date)} ${session.start_time?.slice(0, 5)}-${session.end_time?.slice(0, 5)}\n地點：${locStr}\n程度：${session.level || "不限"}\n費用：$${session.price || 0} / 人\n規範：${limitStr}${noteStr}\n\n快速報名：\n${url}`;
         navigator.clipboard.writeText(text);
-        alert("✅ 報名資訊與專屬網址已複製！");
+        alert("報名資訊與專屬網址已複製！");
     };
 
     const myHostedSessions = sessions.filter((s) => {
@@ -496,9 +494,9 @@ export default function MySessionsPage() {
     };
 
     const toggleCourtName = (num: number) => {
-        setFormCourtNames(prev => {
+        setFormCourtNames((prev) => {
             if (prev.includes(num)) {
-                return prev.filter(n => n !== num);
+                return prev.filter((n) => n !== num);
             }
             return [...prev, num].sort();
         });
@@ -935,13 +933,13 @@ export default function MySessionsPage() {
 
                                         let paymentStatusText = "";
                                         if (isPaid) {
-                                            paymentStatusText = "🟢 主辦人已確認收款";
+                                            paymentStatusText = "[已確認] 主辦人已確認收款";
                                         } else if (player.payment_method === "cash" || player.payment_account_last5 === "現場付款") {
-                                            paymentStatusText = "✅ 已回報：現場付款";
+                                            paymentStatusText = "[已回報] 現場付款";
                                         } else if (player.payment_method === "line" || player.payment_account_last5 === "TWQR") {
-                                            paymentStatusText = "✅ 已回報：TWQR 付款碼";
+                                            paymentStatusText = "[已回報] TWQR 付款碼";
                                         } else if (player.payment_account_last5) {
-                                            paymentStatusText = `✅ 已回報：銀行轉帳 (末五碼 ${player.payment_account_last5})`;
+                                            paymentStatusText = `[已回報] 銀行轉帳 (末五碼 ${player.payment_account_last5})`;
                                         }
 
                                         return (
@@ -1028,8 +1026,8 @@ export default function MySessionsPage() {
                                                                 {isReported || isPaid ? (
                                                                     <div
                                                                         className={`px-3 py-2 rounded-xl border text-xs font-extrabold flex items-center justify-between ${isPaid
-                                                                            ? "bg-green-50 border-green-200 text-green-800"
-                                                                            : "bg-gray-50 border-gray-200 text-gray-800"
+                                                                                ? "bg-green-50 border-green-200 text-green-800"
+                                                                                : "bg-gray-50 border-gray-200 text-gray-800"
                                                                             }`}
                                                                     >
                                                                         <span>{paymentStatusText}</span>
@@ -1037,9 +1035,7 @@ export default function MySessionsPage() {
                                                                             <button
                                                                                 onClick={() => {
                                                                                     setPayingRecord({ session, player });
-                                                                                    setPayMethod(
-                                                                                        (player.payment_method as any) || "bank"
-                                                                                    );
+                                                                                    setPayMethod((player.payment_method as any) || "bank");
                                                                                     setPayLast5(
                                                                                         player.payment_account_last5 &&
                                                                                             player.payment_account_last5 !== "TWQR" &&
@@ -1104,7 +1100,6 @@ export default function MySessionsPage() {
                             {isEditingSession ? "修改臨打活動" : "開一場臨打"}
                         </h2>
                         <form onSubmit={handleSaveSession} className="space-y-4 text-xs">
-
                             <div className="space-y-2.5 bg-gray-50 p-3 rounded-xl border border-gray-200">
                                 <label className="font-extrabold text-gray-900 block text-sm">1. 選擇地點與場館</label>
                                 <div className="grid grid-cols-2 gap-2">
@@ -1140,7 +1135,7 @@ export default function MySessionsPage() {
                                 <input
                                     type="text"
                                     required
-                                    placeholder="場館名稱 (例：享動羽球匹克球智能館)"
+                                    placeholder="場館名稱 (例：ZZ智能匹克球館)"
                                     value={formLocation}
                                     onChange={(e) => setFormLocation(e.target.value)}
                                     className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-gray-900 font-bold"
@@ -1470,7 +1465,7 @@ export default function MySessionsPage() {
 
                                     {payMethod === "cash" && (
                                         <p className="text-gray-700 font-bold text-center py-2">
-                                            💵 確認選擇「現場付款」，請於活動當天將現金交給主辦人。
+                                            確認選擇「現場付款」，請於活動當天將現金交給主辦人。
                                         </p>
                                     )}
                                 </div>
