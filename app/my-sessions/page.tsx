@@ -2,7 +2,21 @@
 
 import { useState, useEffect } from "react";
 import { supabase } from "../../lib/supabase";
-import { Plus, RotateCcw, ChevronLeft, Edit3, Trash2, MapPin, Share, Undo2 } from "lucide-react";
+import {
+    Plus,
+    RotateCcw,
+    CheckCircle2,
+    XCircle,
+    ChevronLeft,
+    Check,
+    Edit3,
+    Trash2,
+    MapPin,
+    Share,
+    Undo2,
+    Users,
+    Lock,
+} from "lucide-react";
 
 const TAIWAN_CITIES: Record<string, string[]> = {
     台北市: ["中正區", "大同區", "中山區", "松山區", "大安區", "萬華區", "信義區", "士林區", "北投區", "內湖區", "南港區", "文山區"],
@@ -48,7 +62,6 @@ export default function MySessionsPage() {
         lineNickname: "",
         paymentLink: "",
         bankAccount: "",
-        socialName: "",
         socialLink: "",
     });
     const [hostedIds, setHostedIds] = useState<string[]>([]);
@@ -95,7 +108,6 @@ export default function MySessionsPage() {
                     lineNickname: parsed.lineNickname || "",
                     paymentLink: parsed.paymentLink || "",
                     bankAccount: parsed.bankAccount || "",
-                    socialName: parsed.socialName || "",
                     socialLink: parsed.socialLink || "",
                 });
                 setFormBankAccount(parsed.bankAccount || "");
@@ -393,7 +405,7 @@ export default function MySessionsPage() {
                 .eq("id", payingRecord.player.id);
 
             if (error) throw error;
-            alert("付款方式已回報成功！等待主辦人核帳。");
+            alert("✅ 付款方式已回報成功！等待主辦人核帳。");
             setPayingRecord(null);
             setPayLast5("");
             fetchAllData();
@@ -415,7 +427,7 @@ export default function MySessionsPage() {
 
         const text = `PickleGo 臨打邀請\n主辦：${hostStr}\n時間：${formatDateWithDay(session.session_date)} ${session.start_time?.slice(0, 5)}-${session.end_time?.slice(0, 5)}\n地點：${locStr}\n程度：${session.level || "不限"}\n費用：$${session.price || 0} / 人\n規範：${limitStr}${noteStr}\n\n快速報名：\n${url}`;
         navigator.clipboard.writeText(text);
-        alert("報名資訊與專屬網址已複製！");
+        alert("✅ 報名資訊與專屬網址已複製！");
     };
 
     const myHostedSessions = sessions.filter((s) => {
@@ -923,13 +935,13 @@ export default function MySessionsPage() {
 
                                         let paymentStatusText = "";
                                         if (isPaid) {
-                                            paymentStatusText = "[已確認] 主辦人已收款";
+                                            paymentStatusText = "🟢 主辦人已確認收款";
                                         } else if (player.payment_method === "cash" || player.payment_account_last5 === "現場付款") {
-                                            paymentStatusText = "[已回報] 現場付款";
+                                            paymentStatusText = "✅ 已回報：現場付款";
                                         } else if (player.payment_method === "line" || player.payment_account_last5 === "TWQR") {
-                                            paymentStatusText = "[已回報] TWQR 付款碼";
+                                            paymentStatusText = "✅ 已回報：TWQR 付款碼";
                                         } else if (player.payment_account_last5) {
-                                            paymentStatusText = `[已回報] 銀行轉帳 (末五碼 ${player.payment_account_last5})`;
+                                            paymentStatusText = `✅ 已回報：銀行轉帳 (末五碼 ${player.payment_account_last5})`;
                                         }
 
                                         return (
@@ -1458,7 +1470,7 @@ export default function MySessionsPage() {
 
                                     {payMethod === "cash" && (
                                         <p className="text-gray-700 font-bold text-center py-2">
-                                            確認選擇「現場付款」，請於活動當天將現金交給主辦人。
+                                            💵 確認選擇「現場付款」，請於活動當天將現金交給主辦人。
                                         </p>
                                     )}
                                 </div>

@@ -2,7 +2,17 @@
 
 import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "../lib/supabase";
-import { SlidersHorizontal, X, Share } from "lucide-react";
+import {
+  CheckCircle2,
+  Clock,
+  AlertCircle,
+  SlidersHorizontal,
+  Users,
+  X,
+  MapPin,
+  Share,
+  Lock
+} from "lucide-react";
 
 const getLocalDateStr = (d: Date) => {
   const year = d.getFullYear();
@@ -286,7 +296,7 @@ export default function FindGamesPage() {
         .eq("id", createdPlayerId);
 
       if (error) throw error;
-      alert("付款方式回報已送出！可隨時至「我的臨打 > 報名資訊」查看狀態。");
+      alert("✅ 付款方式回報已送出！可隨時至「我的臨打 > 報名資訊」查看狀態。");
       setBookingResult(null);
       setTimeLeft(null);
       fetchData();
@@ -308,7 +318,7 @@ export default function FindGamesPage() {
 
     const text = `PickleGo 臨打邀請\n主辦：${hostStr}\n時間：${formatDateWithDay(session.session_date)} ${session.start_time?.slice(0, 5)}-${session.end_time?.slice(0, 5)}\n地點：${locStr}\n程度：${session.level || "不限"}\n費用：$${session.price || 0} / 人\n規範：${limitStr}${noteStr}\n\n快速報名：\n${url}`;
     navigator.clipboard.writeText(text);
-    alert("報名資訊與網址已複製！");
+    alert("✅ 報名資訊與網址已複製！");
   };
 
   const datesWithSessions = useMemo(() => {
