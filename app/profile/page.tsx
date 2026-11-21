@@ -109,31 +109,42 @@ export default function ProfilePage() {
             .order("session_date", { ascending: false });
 
         if (data) {
-            let hostedIds: string[] = [];
-            try {
-                const savedHosted = localStorage.getItem("picklego_hosted_sessions");
-                if (savedHosted) hostedIds = JSON.parse(savedHosted);
-            } catch (e) { }
+            if (targetPhone) {
+                // 已登入狀態：嚴格只比對手機號碼
+                const hosted = data.filter((s) => s.host_phone === targetPhone);
+                setMyHostedSessions(hosted);
 
-            const hosted = data.filter(
-                (s) =>
-                    (targetPhone && s.host_phone === targetPhone) ||
-                    hostedIds.includes(s.id)
-            );
-            setMyHostedSessions(hosted);
-
-            const joined = data.filter((s) => {
-                if (!s.open_play_players) return false;
-                return s.open_play_players.some(
-                    (player: any) =>
-                        (targetPhone && player.phone === targetPhone) ||
-                        (targetLine &&
-                            (player.line_nickname === targetLine ||
-                                player.display_name === targetLine))
+                const joined = data.filter((s) =>
+                    (s.open_play_players || []).some((player: any) => player.phone === targetPhone)
                 );
-            });
-            setMyJoinedSessions(joined);
+                setMyJoinedSessions(joined);
+            } else {
+                // 訪客狀態：才讀取本機紀錄
+                let hostedIds: string[] = [];
+                try {
+                    const savedHosted = localStorage.getItem("picklego_hosted_sessions");
+                    if (savedHosted) hostedIds = JSON.parse(savedHosted);
+                } catch (e) { }
+
+                const hosted = data.filter((s) => hostedIds.includes(s.id));
+                setMyHostedSessions(hosted);
+
+                const joined = data.filter((s) =>
+                    (s.open_play_players || []).some(
+                        (player: any) =>
+                            targetLine &&
+                            (player.line_nickname === targetLine || player.display_name === targetLine)
+                    )
+                );
+                setMyJoinedSessions(joined);
+            }
         }
+    };
+
+    const clearLocalSessionCache = () => {
+        localStorage.removeItem("picklego_hosted_sessions");
+        localStorage.removeItem("picklego_joined_sessions");
+        localStorage.removeItem("picklego_last_session_template");
     };
 
     const handleVerifyAndSync = async (e: React.FormEvent) => {
@@ -147,6 +158,7 @@ export default function ProfilePage() {
         try {
             const cleanPhone = authPhone.trim();
             const cleanPin = authPin.trim();
+            const isSwitchingAccount = Boolean(phone && phone !== cleanPhone);
             const saltedHash = await hashPin(cleanPhone, cleanPin);
 
             const legacyUnsaltedBuffer = await crypto.subtle.digest(
@@ -174,7 +186,7 @@ export default function ProfilePage() {
                     storedPin === cleanPin;
 
                 if (!isMatch) {
-                    alert("❌ 4 碼 PIN 碼不正確！無法載入該手機號碼的個人資料。");
+                    alert("4 碼 PIN 碼不正確！無法載入該手機號碼的個人資料。");
                     setIsAuthLoading(false);
                     return;
                 }
@@ -183,7 +195,7 @@ export default function ProfilePage() {
                     authNickname.trim() ||
                     existingUser.line_nickname ||
                     existingUser.name ||
-                    lineNickname;
+                    "Pickle 玩家";
 
                 await supabase
                     .from("users")
@@ -206,48 +218,56 @@ export default function ProfilePage() {
                     phone: cleanPhone,
                     pinCode: saltedHash,
                     lineNickname: nextNickname,
-                    paymentLink: existingUser.payment_link || paymentLink,
-                    bankAccount: existingUser.bank_account || bankAccount,
-                    socialName: existingSocialName || socialName,
-                    socialLink: existingSocialLink || socialLink,
+                    paymentLink: existingUser.payment_link || "",
+                    bankAccount: existingUser.bank_account || "",
+                    socialName: existingSocialName,
+                    socialLink: existingSocialLink,
                 };
             } else {
-                const finalNick = authNickname.trim() || lineNickname || "Pickle 玩家";
+                const finalNick = authNickname.trim() || "Pickle 玩家";
                 finalProfile = {
                     phone: cleanPhone,
                     pinCode: saltedHash,
                     lineNickname: finalNick,
-                    paymentLink,
-                    bankAccount,
-                    socialName,
-                    socialLink,
+                    paymentLink: isSwitchingAccount ? "" : paymentLink,
+                    bankAccount: isSwitchingAccount ? "" : bankAccount,
+                    socialName: isSwitchingAccount ? "" : socialName,
+                    socialLink: isSwitchingAccount ? "" : socialLink,
                 };
 
-                const socialJson = JSON.stringify({ name: socialName, url: socialLink });
+                const socialJson = JSON.stringify({
+                    name: finalProfile.socialName,
+                    url: finalProfile.socialLink,
+                });
                 await supabase.from("users").upsert({
                     phone: cleanPhone,
                     name: finalNick,
                     line_nickname: finalNick,
                     pin_code: saltedHash,
-                    payment_link: paymentLink || null,
-                    bank_account: bankAccount || null,
+                    payment_link: finalProfile.paymentLink || null,
+                    bank_account: finalProfile.bankAccount || null,
                     social_link: socialJson || null,
                 });
             }
 
-            try {
-                const savedHosted = localStorage.getItem("picklego_hosted_sessions");
-                if (savedHosted) {
-                    const hostedIds: string[] = JSON.parse(savedHosted);
-                    if (hostedIds.length > 0) {
-                        await supabase
-                            .from("open_play_sessions")
-                            .update({ host_phone: cleanPhone, host_name: finalProfile.lineNickname })
-                            .in("id", hostedIds)
-                            .is("host_phone", null);
+            // 只有在「訪客首次綁定」時才認領本機未綁定的開團；切換帳號時徹底清場
+            if (isSwitchingAccount) {
+                clearLocalSessionCache();
+            } else if (!phone) {
+                try {
+                    const savedHosted = localStorage.getItem("picklego_hosted_sessions");
+                    if (savedHosted) {
+                        const hostedIds: string[] = JSON.parse(savedHosted);
+                        if (hostedIds.length > 0) {
+                            await supabase
+                                .from("open_play_sessions")
+                                .update({ host_phone: cleanPhone, host_name: finalProfile.lineNickname })
+                                .in("id", hostedIds)
+                                .is("host_phone", null);
+                        }
                     }
-                }
-            } catch (e) { }
+                } catch (e) { }
+            }
 
             setPhone(finalProfile.phone);
             setPinCode(finalProfile.pinCode);
@@ -261,7 +281,7 @@ export default function ProfilePage() {
             localStorage.setItem("picklego_user_profile", JSON.stringify(finalProfile));
             await fetchHistory(cleanPhone, finalProfile.lineNickname);
             setShowAuthModal(false);
-            alert("✅ 身分驗證與加密同步完成！您的開團與報名紀錄已全面綁定。");
+            alert("身分驗證與加密同步完成！");
         } catch (err: any) {
             alert("同步失敗：" + err.message);
         } finally {
@@ -277,6 +297,7 @@ export default function ProfilePage() {
         )
             return;
         localStorage.removeItem("picklego_user_profile");
+        clearLocalSessionCache();
         setPhone("");
         setPinCode("");
         setLineNickname("Pickle 玩家");
@@ -313,7 +334,10 @@ export default function ProfilePage() {
         localStorage.setItem("picklego_user_profile", JSON.stringify(nextProfile));
 
         if (nextProfile.phone) {
-            const socialJson = JSON.stringify({ name: nextProfile.socialName, url: nextProfile.socialLink });
+            const socialJson = JSON.stringify({
+                name: nextProfile.socialName,
+                url: nextProfile.socialLink,
+            });
             await supabase.from("users").upsert({
                 phone: nextProfile.phone,
                 name: nextProfile.lineNickname,
@@ -491,15 +515,15 @@ export default function ProfilePage() {
             <div className="p-4 space-y-5">
                 <div
                     className={`rounded-2xl p-4 border shadow-2xs flex items-center justify-between gap-3 ${isVerified
-                        ? "bg-green-50/70 border-green-200"
-                        : "bg-amber-50 border-amber-200"
+                            ? "bg-green-50/70 border-green-200"
+                            : "bg-amber-50 border-amber-200"
                         }`}
                 >
                     <div className="flex items-center gap-3 min-w-0">
                         <div
                             className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${isVerified
-                                ? "bg-green-700 text-white"
-                                : "bg-amber-500 text-white"
+                                    ? "bg-green-700 text-white"
+                                    : "bg-amber-500 text-white"
                                 }`}
                         >
                             {isVerified ? <ShieldCheck size={20} /> : <Lock size={18} />}
@@ -519,9 +543,9 @@ export default function ProfilePage() {
                         <div className="flex items-center gap-1.5 shrink-0">
                             <button
                                 onClick={() => {
-                                    setAuthPhone(phone);
+                                    setAuthPhone("");
                                     setAuthPin("");
-                                    setAuthNickname(lineNickname);
+                                    setAuthNickname("");
                                     setShowAuthModal(true);
                                 }}
                                 className="text-xs font-bold text-green-800 bg-white px-2.5 py-1.5 rounded-xl border border-green-300"
@@ -680,8 +704,8 @@ export default function ProfilePage() {
                         <button
                             onClick={() => setHistoryTab("hosted")}
                             className={`py-2 rounded-lg text-xs font-extrabold transition-all ${historyTab === "hosted"
-                                ? "bg-green-700 text-white shadow-2xs"
-                                : "text-gray-600"
+                                    ? "bg-green-700 text-white shadow-2xs"
+                                    : "text-gray-600"
                                 }`}
                         >
                             開團紀錄 ({myHostedSessions.length})
@@ -689,8 +713,8 @@ export default function ProfilePage() {
                         <button
                             onClick={() => setHistoryTab("joined")}
                             className={`py-2 rounded-lg text-xs font-extrabold transition-all ${historyTab === "joined"
-                                ? "bg-green-700 text-white shadow-2xs"
-                                : "text-gray-600"
+                                    ? "bg-green-700 text-white shadow-2xs"
+                                    : "text-gray-600"
                                 }`}
                         >
                             報名紀錄 ({myJoinedSessions.length})
@@ -743,9 +767,7 @@ export default function ProfilePage() {
                                                                 : "text-gray-500"
                                                         }
                                                     >
-                                                        {historyTab === "hosted"
-                                                            ? `$${s.price}`
-                                                            : "已參加"}
+                                                        {historyTab === "hosted" ? `$${s.price}` : "已參加"}
                                                     </span>
                                                 </p>
                                             </div>
@@ -915,8 +937,8 @@ export default function ProfilePage() {
                                     <button
                                         onClick={() => setExportType("hosted")}
                                         className={`py-2 rounded-xl font-bold border transition ${exportType === "hosted"
-                                            ? "bg-green-700 text-white border-green-700"
-                                            : "bg-gray-50 text-gray-600 border-gray-200"
+                                                ? "bg-green-700 text-white border-green-700"
+                                                : "bg-gray-50 text-gray-600 border-gray-200"
                                             }`}
                                     >
                                         開團對帳報表
@@ -924,8 +946,8 @@ export default function ProfilePage() {
                                     <button
                                         onClick={() => setExportType("joined")}
                                         className={`py-2 rounded-xl font-bold border transition ${exportType === "joined"
-                                            ? "bg-green-700 text-white border-green-700"
-                                            : "bg-gray-50 text-gray-600 border-gray-200"
+                                                ? "bg-green-700 text-white border-green-700"
+                                                : "bg-gray-50 text-gray-600 border-gray-200"
                                             }`}
                                     >
                                         個人報名紀錄

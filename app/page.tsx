@@ -2,17 +2,7 @@
 
 import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "../lib/supabase";
-import {
-  CheckCircle2,
-  Clock,
-  AlertCircle,
-  SlidersHorizontal,
-  Users,
-  X,
-  MapPin,
-  Share,
-  Lock
-} from "lucide-react";
+import { SlidersHorizontal, X, Share } from "lucide-react";
 
 const getLocalDateStr = (d: Date) => {
   const year = d.getFullYear();
@@ -249,10 +239,6 @@ export default function FindGamesPage() {
           .eq("id", data.booking_id);
       }
 
-      const updatedMap = { ...myJoinedMap, [session.id]: data.status };
-      setMyJoinedMap(updatedMap);
-      localStorage.setItem("picklego_joined_sessions", JSON.stringify(updatedMap));
-
       setCreatedPlayerId(data.booking_id);
       setBookingResult({ ...session, status: data.status });
 
@@ -282,7 +268,7 @@ export default function FindGamesPage() {
             ? "現場付款"
             : "TWQR";
 
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from("open_play_players")
         .update({
           phone: phone.trim(),
@@ -293,10 +279,15 @@ export default function FindGamesPage() {
           payment_status: "reported",
           payment_report_time: new Date().toISOString(),
         })
-        .eq("id", createdPlayerId);
+        .eq("id", createdPlayerId)
+        .select();
 
       if (error) throw error;
-      alert("✅ 付款方式回報已送出！可隨時至「我的臨打 > 報名資訊」查看狀態。");
+      if (!data || data.length === 0) {
+        throw new Error("回報資料未寫入資料庫，請確認 Supabase 權限或至「我的臨打 > 報名資訊」重新回報。");
+      }
+
+      alert("付款方式回報已送出！可隨時至「我的臨打 > 報名資訊」查看狀態。");
       setBookingResult(null);
       setTimeLeft(null);
       fetchData();
@@ -318,7 +309,7 @@ export default function FindGamesPage() {
 
     const text = `PickleGo 臨打邀請\n主辦：${hostStr}\n時間：${formatDateWithDay(session.session_date)} ${session.start_time?.slice(0, 5)}-${session.end_time?.slice(0, 5)}\n地點：${locStr}\n程度：${session.level || "不限"}\n費用：$${session.price || 0} / 人\n規範：${limitStr}${noteStr}\n\n快速報名：\n${url}`;
     navigator.clipboard.writeText(text);
-    alert("✅ 報名資訊與網址已複製！");
+    alert("報名資訊與網址已複製！");
   };
 
   const datesWithSessions = useMemo(() => {
@@ -381,8 +372,8 @@ export default function FindGamesPage() {
                   setSelectedSession(null);
                 }}
                 className={`relative shrink-0 px-4 py-1.5 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 ${isSelected
-                  ? "bg-green-700 text-white shadow-2xs"
-                  : "bg-gray-100 text-gray-600"
+                    ? "bg-green-700 text-white shadow-2xs"
+                    : "bg-gray-100 text-gray-600"
                   }`}
               >
                 <span>{d.display}</span>
@@ -424,11 +415,12 @@ export default function FindGamesPage() {
             const isRegFull = regCount >= session.max_players;
             const isCompletelyFull = isRegFull && waitCount >= (session.max_waitlist || 0);
 
-            const myStatus =
-              activePlayers.find(
+            const myStatus = phone
+              ? activePlayers.find((p: any) => p.phone === phone)?.status
+              : activePlayers.find(
                 (p: any) =>
-                  (phone && p.phone === phone) ||
-                  (lineNickname && (p.line_nickname === lineNickname || p.display_name === lineNickname))
+                  lineNickname &&
+                  (p.line_nickname === lineNickname || p.display_name === lineNickname)
               )?.status || myJoinedMap[session.id];
 
             let statusLabel = "我要報名";
@@ -622,8 +614,8 @@ export default function FindGamesPage() {
                       key={r}
                       onClick={() => setFilterRegion(r)}
                       className={`py-2 rounded-xl text-xs font-bold border transition ${filterRegion === r
-                        ? "bg-green-700 text-white border-green-700"
-                        : "bg-white text-gray-600 border-gray-200"
+                          ? "bg-green-700 text-white border-green-700"
+                          : "bg-white text-gray-600 border-gray-200"
                         }`}
                     >
                       {r}
@@ -639,8 +631,8 @@ export default function FindGamesPage() {
                       key={t}
                       onClick={() => setFilterTime(t)}
                       className={`py-2 rounded-xl text-xs font-bold border transition ${filterTime === t
-                        ? "bg-green-700 text-white border-green-700"
-                        : "bg-white text-gray-600 border-gray-200"
+                          ? "bg-green-700 text-white border-green-700"
+                          : "bg-white text-gray-600 border-gray-200"
                         }`}
                     >
                       {t}
@@ -656,8 +648,8 @@ export default function FindGamesPage() {
                       key={l}
                       onClick={() => setFilterLevel(l)}
                       className={`py-2 rounded-xl text-xs font-bold border transition ${filterLevel === l
-                        ? "bg-green-700 text-white border-green-700"
-                        : "bg-white text-gray-600 border-gray-200"
+                          ? "bg-green-700 text-white border-green-700"
+                          : "bg-white text-gray-600 border-gray-200"
                         }`}
                     >
                       {l}
@@ -723,8 +715,8 @@ export default function FindGamesPage() {
                         <button
                           onClick={() => setSelectedPayment("bank")}
                           className={`py-2.5 rounded-xl font-bold text-xs border ${selectedPayment === "bank"
-                            ? "border-gray-900 bg-gray-900 text-white"
-                            : "border-gray-200 text-gray-600 bg-gray-50"
+                              ? "border-gray-900 bg-gray-900 text-white"
+                              : "border-gray-200 text-gray-600 bg-gray-50"
                             }`}
                         >
                           銀行轉帳
@@ -732,8 +724,8 @@ export default function FindGamesPage() {
                         <button
                           onClick={() => setSelectedPayment("line")}
                           className={`py-2.5 rounded-xl font-bold text-xs border ${selectedPayment === "line"
-                            ? "border-[#06C755] bg-[#06C755] text-white"
-                            : "border-gray-200 text-gray-600 bg-gray-50"
+                              ? "border-[#06C755] bg-[#06C755] text-white"
+                              : "border-gray-200 text-gray-600 bg-gray-50"
                             }`}
                         >
                           TWQR / 付款碼
@@ -741,8 +733,8 @@ export default function FindGamesPage() {
                         <button
                           onClick={() => setSelectedPayment("cash")}
                           className={`py-2.5 rounded-xl font-bold text-xs border ${selectedPayment === "cash"
-                            ? "border-amber-600 bg-amber-600 text-white"
-                            : "border-gray-200 text-gray-600 bg-gray-50"
+                              ? "border-amber-600 bg-amber-600 text-white"
+                              : "border-gray-200 text-gray-600 bg-gray-50"
                             }`}
                         >
                           現場付款

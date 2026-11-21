@@ -294,7 +294,7 @@ export default function MySessionsPage() {
                     .select()
                     .single();
                 if (error) throw error;
-                if (data?.id) {
+                if (data?.id && !userProfile.phone) {
                     const nextHosted = Array.from(new Set([data.id, ...hostedIds]));
                     setHostedIds(nextHosted);
                     localStorage.setItem("picklego_hosted_sessions", JSON.stringify(nextHosted));
@@ -333,7 +333,6 @@ export default function MySessionsPage() {
         }
     };
 
-    // 取消整場臨打活動
     const handleCancelSession = async () => {
         if (!managingSession) return;
         const activeCount = (managingSession.open_play_players || []).filter(
@@ -369,10 +368,13 @@ export default function MySessionsPage() {
 
     const handleConfirmPayment = async (player: any) => {
         try {
-            await supabase
+            const { data, error } = await supabase
                 .from("open_play_players")
                 .update({ payment_status: "paid", admin_confirm_time: new Date().toISOString() })
-                .eq("id", player.id);
+                .eq("id", player.id)
+                .select();
+            if (error) throw error;
+            if (!data || data.length === 0) throw new Error("資料庫未成功更新，請確認權限設定。");
             fetchAllData();
         } catch (err: any) {
             alert("核帳失敗：" + err.message);
@@ -382,10 +384,13 @@ export default function MySessionsPage() {
     const handleUndoPayment = async (player: any) => {
         if (!confirm(`確定要將「${player.display_name || player.line_nickname}」退回待核帳狀態嗎？`)) return;
         try {
-            await supabase
+            const { data, error } = await supabase
                 .from("open_play_players")
                 .update({ payment_status: "reported", admin_confirm_time: null })
-                .eq("id", player.id);
+                .eq("id", player.id)
+                .select();
+            if (error) throw error;
+            if (!data || data.length === 0) throw new Error("資料庫未成功更新，請確認權限設定。");
             fetchAllData();
         } catch (err: any) {
             alert("復原失敗：" + err.message);
@@ -399,10 +404,13 @@ export default function MySessionsPage() {
         if (!confirm(confirmMsg)) return;
 
         try {
-            await supabase
+            const { data, error } = await supabase
                 .from("open_play_players")
                 .update({ status: "cancelled", cancelled_at: new Date().toISOString() })
-                .eq("id", player.id);
+                .eq("id", player.id)
+                .select();
+            if (error) throw error;
+            if (!data || data.length === 0) throw new Error("資料庫未成功更新，請確認權限設定。");
 
             if (player.status === "registered") {
                 const waitlisted = (session.open_play_players || [])
@@ -432,7 +440,7 @@ export default function MySessionsPage() {
             const finalLast5 =
                 payMethod === "line" ? "TWQR" : payMethod === "cash" ? "現場付款" : payLast5.trim();
 
-            const { error } = await supabase
+            const { data, error } = await supabase
                 .from("open_play_players")
                 .update({
                     payment_method: payMethod,
@@ -440,9 +448,14 @@ export default function MySessionsPage() {
                     payment_status: "reported",
                     payment_report_time: new Date().toISOString(),
                 })
-                .eq("id", payingRecord.player.id);
+                .eq("id", payingRecord.player.id)
+                .select();
 
             if (error) throw error;
+            if (!data || data.length === 0) {
+                throw new Error("回報資料未寫入資料庫，請確認 Supabase 權限或重新整理後再試。");
+            }
+
             alert("付款方式已回報成功！等待主辦人核帳。");
             setPayingRecord(null);
             setPayLast5("");
@@ -468,23 +481,23 @@ export default function MySessionsPage() {
         alert("報名資訊與專屬網址已複製！");
     };
 
+    // 已登入時嚴格只比對手機號碼，避免不同帳號互相看到資料
     const myHostedSessions = sessions.filter((s) => {
-        if (userProfile.phone && s.host_phone === userProfile.phone) return true;
-        if (hostedIds.includes(s.id)) return true;
-        if (!userProfile.phone && hostedIds.length === 0) return s.status === "open";
-        return false;
+        if (userProfile.phone) return s.host_phone === userProfile.phone;
+        return hostedIds.includes(s.id);
     });
 
     const myJoinedEntries = sessions
         .map((session) => {
-            const myRecord = (session.open_play_players || []).find(
-                (p: any) =>
-                    (userProfile.phone && p.phone === userProfile.phone) ||
+            const myRecord = (session.open_play_players || []).find((p: any) => {
+                if (userProfile.phone) return p.phone === userProfile.phone;
+                return (
                     (userProfile.lineNickname &&
                         (p.line_nickname === userProfile.lineNickname ||
                             p.display_name === userProfile.lineNickname)) ||
-                    joinedMap[session.id]
-            );
+                    Boolean(joinedMap[session.id])
+                );
+            });
             return myRecord ? { session, player: myRecord } : null;
         })
         .filter(Boolean) as { session: any; player: any }[];
@@ -1155,7 +1168,6 @@ export default function MySessionsPage() {
                 </>
             )}
 
-            {/* ==================== 開團 / 修改臨打 Modal ==================== */}
             {showCreateModal && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
                     <div className="bg-white rounded-2xl w-full max-w-sm max-h-[88dvh] overflow-y-auto p-5 shadow-2xl">
@@ -1276,7 +1288,6 @@ export default function MySessionsPage() {
                                 </div>
                             </div>
 
-                            {/* 6. 正取人數上限 (原生下拉選單 2~32 人) & 7. 候補名額 */}
                             <div className="grid grid-cols-2 gap-2">
                                 <div>
                                     <label className="font-bold text-gray-800 block mb-1">6. 正取人數上限</label>
@@ -1312,7 +1323,6 @@ export default function MySessionsPage() {
                                 </div>
                             </div>
 
-                            {/* 8. 每人費用 (快捷金額按鈕 + 純數字鍵盤文字框) */}
                             <div className="space-y-2">
                                 <div>
                                     <label className="font-bold text-gray-800 block mb-1.5">8. 每人費用 ($)</label>
