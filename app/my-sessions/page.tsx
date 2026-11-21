@@ -28,6 +28,9 @@ const TAIWAN_CITIES: Record<string, string[]> = {
     其他: ["苗栗縣", "南投縣", "雲林縣", "嘉義市", "嘉義縣", "屏東縣", "宜蘭縣", "花蓮縣", "台東縣", "澎湖縣", "金門縣", "連江縣"],
 };
 
+const PLAYER_COUNT_OPTIONS = Array.from({ length: 31 }, (_, i) => i + 2);
+const QUICK_PRICE_OPTIONS = [100, 150, 200, 250, 300];
+
 const renderTextWithLinks = (text: string) => {
     if (!text) return null;
     const urlRegex = /(https?:\/\/[^\s]+)/g;
@@ -80,7 +83,7 @@ export default function MySessionsPage() {
     const [formLevel, setFormLevel] = useState("不限");
     const [formMaxPlayers, setFormMaxPlayers] = useState(16);
     const [formWaitlist, setFormWaitlist] = useState(2);
-    const [formPrice, setFormPrice] = useState(150);
+    const [formPrice, setFormPrice] = useState("150");
 
     const [cancelLimitMode, setCancelLimitMode] = useState<"unlimited" | "no_cancel" | "custom">("custom");
     const [customCancelHours, setCustomCancelHours] = useState<number>(24);
@@ -204,9 +207,9 @@ export default function MySessionsPage() {
                 setFormStartTime(t.startTime || "19:00");
                 setFormEndTime(t.endTime || "21:00");
                 setFormLevel(t.level || "不限");
-                setFormMaxPlayers(t.maxPlayers || 16);
+                setFormMaxPlayers(Math.min(32, Math.max(2, Number(t.maxPlayers || 16))));
                 setFormWaitlist(t.waitlist || 2);
-                setFormPrice(t.price ?? 150);
+                setFormPrice(String(t.price ?? 150));
                 setCancelLimitMode(t.cancelLimitMode || "custom");
                 setCustomCancelHours(t.customCancelHours || 24);
                 setFormNotes(t.notes || "");
@@ -231,6 +234,9 @@ export default function MySessionsPage() {
         }
         if (formCourtNames.length === 0) {
             return alert("請至少選擇一個場地編號！");
+        }
+        if (formPrice.trim() === "") {
+            return alert("請填寫每人費用（免費請輸入 0）！");
         }
         if (cancelLimitMode === "custom" && (!customCancelHours || customCancelHours < 1)) {
             return alert("請輸入有效的取消限制小時數（至少 1 小時）！");
@@ -264,7 +270,7 @@ export default function MySessionsPage() {
                 start_time: `${formStartTime.slice(0, 5)}:00`,
                 end_time: `${formEndTime.slice(0, 5)}:00`,
                 level: formLevel,
-                price: Number(formPrice),
+                price: Number(formPrice || 0),
                 max_players: Number(formMaxPlayers),
                 max_waitlist: Number(formWaitlist),
                 cancel_limit_hours: finalCancelHours,
@@ -306,7 +312,7 @@ export default function MySessionsPage() {
                         level: formLevel,
                         maxPlayers: Number(formMaxPlayers),
                         waitlist: Number(formWaitlist),
-                        price: Number(formPrice),
+                        price: Number(formPrice || 0),
                         cancelLimitMode,
                         customCancelHours: Number(customCancelHours),
                         notes: formNotes.trim(),
@@ -321,7 +327,41 @@ export default function MySessionsPage() {
             setShowCreateModal(false);
             await fetchAllData();
         } catch (err: any) {
-            alert("儲存失敗：" + (err.message || "請確認已執行第一步的 Supabase SQL 擴充指令"));
+            alert("儲存失敗：" + (err.message || "請稍後再試"));
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    // 取消整場臨打活動
+    const handleCancelSession = async () => {
+        if (!managingSession) return;
+        const activeCount = (managingSession.open_play_players || []).filter(
+            (p: any) => p.status !== "cancelled"
+        ).length;
+
+        const msg =
+            activeCount > 0
+                ? `目前已有 ${activeCount} 位球友報名（含候補），確定要取消此場次嗎？\n取消後將從找球打列表下架，請記得主動通知球友並處理退費。`
+                : "確定要取消此場次嗎？取消後將從找球打列表下架。";
+
+        if (!confirm(msg)) return;
+
+        setIsSubmitting(true);
+        try {
+            const { error } = await supabase
+                .from("open_play_sessions")
+                .update({ status: "cancelled" })
+                .eq("id", managingSession.id);
+            if (error) throw error;
+
+            alert("已取消此場次！");
+            setShowCreateModal(false);
+            setIsEditingSession(false);
+            setManagingSessionId(null);
+            await fetchAllData();
+        } catch (err: any) {
+            alert("取消場次失敗：" + err.message);
         } finally {
             setIsSubmitting(false);
         }
@@ -467,8 +507,8 @@ export default function MySessionsPage() {
         setFormDate(targetSession.session_date);
         setFormStartTime(targetSession.start_time?.slice(0, 5) || "19:00");
         setFormEndTime(targetSession.end_time?.slice(0, 5) || "21:00");
-        setFormMaxPlayers(targetSession.max_players || 16);
-        setFormPrice(targetSession.price ?? 150);
+        setFormMaxPlayers(Math.min(32, Math.max(2, Number(targetSession.max_players || 16))));
+        setFormPrice(String(targetSession.price ?? 150));
         setFormLevel(targetSession.level || "不限");
         setFormWaitlist(targetSession.max_waitlist || 2);
 
@@ -527,6 +567,7 @@ export default function MySessionsPage() {
                     const fullAddress = `${managingSession.city || ""}${managingSession.district || ""} ${managingSession.address || ""}`.trim();
                     const mapQuery = `${fullAddress} ${managingSession.title || ""}`.trim();
                     const payInfo = parseSessionPaymentInfo(managingSession);
+                    const isSessionCancelled = managingSession.status === "cancelled";
 
                     return (
                         <div>
@@ -538,12 +579,18 @@ export default function MySessionsPage() {
                                     <ChevronLeft size={18} /> 返回
                                 </button>
                                 <span className="font-extrabold text-sm text-gray-900">單一場次管理</span>
-                                <button
-                                    onClick={() => openEditModal(managingSession)}
-                                    className="text-xs font-bold text-green-700 bg-green-50 px-2.5 py-1 rounded-full flex items-center gap-1"
-                                >
-                                    <Edit3 size={13} /> 修改內容
-                                </button>
+                                {!isSessionCancelled ? (
+                                    <button
+                                        onClick={() => openEditModal(managingSession)}
+                                        className="text-xs font-bold text-green-700 bg-green-50 px-2.5 py-1 rounded-full flex items-center gap-1"
+                                    >
+                                        <Edit3 size={13} /> 修改內容
+                                    </button>
+                                ) : (
+                                    <span className="text-xs font-bold text-red-600 bg-red-50 px-2.5 py-1 rounded-full">
+                                        場次已取消
+                                    </span>
+                                )}
                             </div>
 
                             <div className="p-4 space-y-4">
@@ -600,12 +647,14 @@ export default function MySessionsPage() {
                                         <span>
                                             報名：<strong className="text-gray-900">{regPlayers.length} / {managingSession.max_players} 人</strong>
                                         </span>
-                                        <button
-                                            onClick={(e) => handleShare(e, managingSession)}
-                                            className="text-green-700 font-bold flex items-center gap-1"
-                                        >
-                                            <Share size={13} /> 分享報名
-                                        </button>
+                                        {!isSessionCancelled && (
+                                            <button
+                                                onClick={(e) => handleShare(e, managingSession)}
+                                                className="text-green-700 font-bold flex items-center gap-1"
+                                            >
+                                                <Share size={13} /> 分享報名
+                                            </button>
+                                        )}
                                     </div>
                                 </div>
 
@@ -669,7 +718,7 @@ export default function MySessionsPage() {
                                                             </p>
                                                         </div>
                                                     </div>
-                                                    {player.status !== "cancelled" && (
+                                                    {player.status !== "cancelled" && !isSessionCancelled && (
                                                         <div className="flex items-center gap-1.5 shrink-0">
                                                             {!isPaid && player.status === "registered" && (
                                                                 <button
@@ -738,6 +787,8 @@ export default function MySessionsPage() {
                                             setFormLocation("");
                                             setFormAddress("");
                                             setFormCourtNames([1]);
+                                            setFormMaxPlayers(16);
+                                            setFormPrice("150");
                                             setCancelLimitMode("custom");
                                             setCustomCancelHours(24);
                                             setFormNotes("");
@@ -783,7 +834,11 @@ export default function MySessionsPage() {
                                                 let badgeStyle = "bg-gray-100 text-gray-700";
                                                 let dotStyle = "bg-green-600";
 
-                                                if (pendingVerifyCount > 0) {
+                                                if (session.status === "cancelled") {
+                                                    actionBadge = "場次已取消";
+                                                    badgeStyle = "bg-red-100 text-red-700";
+                                                    dotStyle = "bg-red-500";
+                                                } else if (pendingVerifyCount > 0) {
                                                     actionBadge = `${pendingVerifyCount} 筆待核帳`;
                                                     badgeStyle = "bg-[#FDE68A] text-amber-900";
                                                     dotStyle = "bg-amber-400";
@@ -814,7 +869,8 @@ export default function MySessionsPage() {
                                                     <div
                                                         key={session.id}
                                                         onClick={() => setManagingSessionId(session.id)}
-                                                        className="bg-white rounded-2xl p-4 border border-gray-100 shadow-2xs flex items-center justify-between gap-3 cursor-pointer hover:border-green-300 transition"
+                                                        className={`bg-white rounded-2xl p-4 border border-gray-100 shadow-2xs flex items-center justify-between gap-3 cursor-pointer hover:border-green-300 transition ${session.status === "cancelled" ? "opacity-60" : ""
+                                                            }`}
                                                     >
                                                         <div className="flex items-start gap-3 min-w-0 flex-1">
                                                             <div className="mt-1.5 shrink-0">
@@ -895,12 +951,17 @@ export default function MySessionsPage() {
 
                                         const isPaid = player.payment_status === "paid" || player.payment_status === "confirmed";
                                         const isReported = player.payment_status === "reported" || Boolean(player.payment_account_last5);
+                                        const isSessionCancelled = session.status === "cancelled";
 
                                         let statusBadge = "已報名";
                                         let statusStyle = "bg-green-700 text-white";
                                         let dotStyle = "bg-green-600";
 
-                                        if (player.status === "cancelled") {
+                                        if (isSessionCancelled) {
+                                            statusBadge = "場次已取消";
+                                            statusStyle = "bg-red-100 text-red-700";
+                                            dotStyle = "bg-red-500";
+                                        } else if (player.status === "cancelled") {
                                             statusBadge = "已取消";
                                             statusStyle = "bg-gray-200 text-gray-500";
                                             dotStyle = "bg-gray-300";
@@ -999,13 +1060,15 @@ export default function MySessionsPage() {
                                                     </div>
 
                                                     <div className="flex flex-col items-end gap-2 shrink-0">
-                                                        <button
-                                                            type="button"
-                                                            onClick={(e) => handleShare(e, session)}
-                                                            className="text-gray-400 hover:text-green-700 bg-gray-50 p-1.5 rounded-full border border-gray-200"
-                                                        >
-                                                            <Share size={14} />
-                                                        </button>
+                                                        {!isSessionCancelled && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={(e) => handleShare(e, session)}
+                                                                className="text-gray-400 hover:text-green-700 bg-gray-50 p-1.5 rounded-full border border-gray-200"
+                                                            >
+                                                                <Share size={14} />
+                                                            </button>
+                                                        )}
                                                         <span className={`px-3 py-1 rounded-full text-xs font-extrabold ${statusStyle}`}>
                                                             {statusBadge}
                                                         </span>
@@ -1019,7 +1082,7 @@ export default function MySessionsPage() {
                                                     </div>
                                                 )}
 
-                                                {player.status !== "cancelled" && (
+                                                {player.status !== "cancelled" && !isSessionCancelled && (
                                                     <div className="pt-3 border-t border-gray-100 space-y-2.5">
                                                         {player.status === "registered" && (
                                                             <div>
@@ -1213,16 +1276,21 @@ export default function MySessionsPage() {
                                 </div>
                             </div>
 
+                            {/* 6. 正取人數上限 (原生下拉選單 2~32 人) & 7. 候補名額 */}
                             <div className="grid grid-cols-2 gap-2">
                                 <div>
                                     <label className="font-bold text-gray-800 block mb-1">6. 正取人數上限</label>
-                                    <input
-                                        type="number"
-                                        min={2}
+                                    <select
                                         value={formMaxPlayers}
                                         onChange={(e) => setFormMaxPlayers(Number(e.target.value))}
-                                        className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-gray-900"
-                                    />
+                                        className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-gray-900 font-bold"
+                                    >
+                                        {PLAYER_COUNT_OPTIONS.map((num) => (
+                                            <option key={num} value={num}>
+                                                {num} 人
+                                            </option>
+                                        ))}
+                                    </select>
                                 </div>
                                 <div>
                                     <label className="font-bold text-gray-800 block mb-1">7. 候補名額</label>
@@ -1244,15 +1312,32 @@ export default function MySessionsPage() {
                                 </div>
                             </div>
 
+                            {/* 8. 每人費用 (快捷金額按鈕 + 純數字鍵盤文字框) */}
                             <div className="space-y-2">
                                 <div>
-                                    <label className="font-bold text-gray-800 block mb-1">8. 每人費用 ($)</label>
+                                    <label className="font-bold text-gray-800 block mb-1.5">8. 每人費用 ($)</label>
+                                    <div className="grid grid-cols-5 gap-1.5 mb-2">
+                                        {QUICK_PRICE_OPTIONS.map((p) => (
+                                            <button
+                                                type="button"
+                                                key={p}
+                                                onClick={() => setFormPrice(String(p))}
+                                                className={`py-1.5 rounded-lg font-bold border transition ${formPrice === String(p)
+                                                        ? "bg-green-700 text-white border-green-700"
+                                                        : "bg-gray-50 text-gray-700 border-gray-200"
+                                                    }`}
+                                            >
+                                                ${p}
+                                            </button>
+                                        ))}
+                                    </div>
                                     <input
-                                        type="number"
-                                        min={0}
+                                        type="text"
+                                        inputMode="numeric"
+                                        placeholder="自訂金額 (例：180，免費請填 0)"
                                         value={formPrice}
-                                        onChange={(e) => setFormPrice(Number(e.target.value))}
-                                        className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-gray-900"
+                                        onChange={(e) => setFormPrice(e.target.value.replace(/[^0-9]/g, ""))}
+                                        className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-gray-900 font-bold"
                                     />
                                 </div>
                                 <div className="bg-gray-50 p-3 rounded-xl border border-gray-200 space-y-2">
@@ -1369,6 +1454,19 @@ export default function MySessionsPage() {
                                     {isSubmitting ? "儲存中..." : isEditingSession ? "確認修改" : "確認發布"}
                                 </button>
                             </div>
+
+                            {isEditingSession && (
+                                <div className="pt-3 border-t border-gray-100">
+                                    <button
+                                        type="button"
+                                        onClick={handleCancelSession}
+                                        disabled={isSubmitting}
+                                        className="w-full bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 font-bold py-2.5 rounded-xl transition disabled:opacity-50"
+                                    >
+                                        取消此場次（下架活動）
+                                    </button>
+                                </div>
+                            )}
                         </form>
                     </div>
                 </div>
